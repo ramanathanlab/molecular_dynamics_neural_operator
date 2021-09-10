@@ -227,6 +227,8 @@ def parse_args():
     # Validation of arguments
     if not args.data_path.exists():
         raise ValueError(f"data_path does not exist: {args.data_path}")
+
+    # Make output directory
     args.run_path.mkdir()
 
     return args
