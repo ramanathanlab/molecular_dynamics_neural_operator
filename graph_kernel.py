@@ -1,20 +1,17 @@
-import torch
-import numpy as np
+import argparse
+from pathlib import Path
+from timeit import default_timer
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import random_split
 
-from torch_geometric.data import Data, DataLoader
+from torch_geometric.data import DataLoader
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
 
 from dataset import ContactMapDataset
-
-from timeit import default_timer
-
-import argparse
-from pathlib import Path
 
 
 class LpLoss(object):
@@ -109,7 +106,7 @@ class NNConv_old(MessagePassing):
         aggr="add",
         root_weight=True,
         bias=True,
-        **kwargs
+        **kwargs,
     ):
         super(NNConv_old, self).__init__(aggr=aggr, **kwargs)
 
@@ -211,100 +208,34 @@ class KernelNN(torch.nn.Module):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--data_path", type=str, required=True)
-    parser.add_argument("--epochs", type=int, default=400)
+    parser.add_argument("--data_path", type=Path, required=True)
+    parser.add_argument("--run_path", type=Path, required=True)
+    parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--lr", type=float, default=0.01)
-    parser.add_argument(
-        "--split_pct",
-        type=float,
-        default=0.8,
-        help="Percentage of data to use for training. The rest goes to validation.",
-    )
-    parser.add_argument(
-        "--run_dir",
-        type=Path,
-        default="./test_plots",
-        help="Output directory for model results.",
-    )
+    parser.add_argument("--lr", type=float, default=0.0001)
+    parser.add_argument("--weight_decay", type=float, default=5e-4)
+    parser.add_argument("--scheduler_step", type=int, default=50)
+    parser.add_argument("--scheduler_gamma", type=float, default=0.8)
+    parser.add_argument("--width", type=int, default=64)
+    parser.add_argument("--kernel_width", type=int, default=1024)
+    parser.add_argument("--depth", type=int, default=6)
+    parser.add_argument("--node_features", type=int, default=6)
+    parser.add_argument("--edge_features", type=int, default=6)
+    parser.add_argument("--split_pct", type=float, default=0.8)
     args = parser.parse_args()
+
+    # Validation of arguments
+    if not args.data_path.exists():
+        raise ValueError(f"data_path does not exist: {args.data_path}")
+    args.run_path.mkdir()
+
     return args
 
 
-args = parse_args()
-
-r = 4
-s = int(((241 - 1) / r) + 1)
-n = s ** 2
-m = 100
-k = 1
-
-radius_train = 0.1
-radius_test = 0.1
-
-print("resolution", s)
-
-
-ntrain = 100
-ntest = 40
-
-batch_size = 1
-batch_size2 = 2
-width = 64
-ker_width = 1024
-depth = 6
-edge_features = 6
-node_features = 6
-
-epochs = 200
-learning_rate = 0.0001
-scheduler_step = 50
-scheduler_gamma = 0.8
-
-t1 = default_timer()
-
-u_normalizer = GaussianNormalizer(train_u)
-train_u = u_normalizer.encode(train_u)
-
-dataset = ContactMapDataset(args.data_path)
-lengths = [
-    int(len(dataset) * args.split_pct),
-    int(len(dataset) * round(1 - args.split_pct, 2)),
-]
-train_dataset, valid_dataset = random_split(dataset, lengths)
-train_loader = DataLoader(train_dataset, args.batch_size, shuffle=True, drop_last=True)
-valid_loader = DataLoader(valid_dataset, args.batch_size, shuffle=True, drop_last=True)
-
-##################################################################################################
-
-# training
-
-##################################################################################################
-t2 = default_timer()
-
-print("preprocessing finished, time used:", t2 - t1)
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-model = KernelNN(width, ker_width, depth, edge_features, node_features).cuda()
-
-optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=5e-4)
-scheduler = torch.optim.lr_scheduler.StepLR(
-    optimizer, step_size=scheduler_step, gamma=scheduler_gamma
-)
-
-myloss = LpLoss(size_average=False)
-u_normalizer.cuda()
-
-model.train()
-ttrain = np.zeros((epochs,))
-ttest16 = np.zeros((epochs,))
-ttest31 = np.zeros((epochs,))
-ttest61 = np.zeros((epochs,))
-
-for ep in range(epochs):
-    t1 = default_timer()
-    train_mse = 0.0
-    train_l2 = 0.0
+def train(model, train_loader, optimizer, loss_fn, device):
+    model.train()
+    avg_mse_loss = 0.0
+    avg_l2_loss = 0.0
     for batch in train_loader:
         batch = batch.to(device)
 
@@ -315,57 +246,97 @@ for ep in range(epochs):
         loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
         loss.backward()
 
-        l2 = myloss(
-            u_normalizer.decode(out.view(batch_size, -1)),
-            u_normalizer.decode(batch.y.view(batch_size, -1)),
-        )
+        l2 = loss_fn(out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1))
         # l2.backward()
 
         optimizer.step()
-        train_mse += mse.item()
-        train_l2 += l2.item()
+        avg_mse_loss += mse.item()
+        avg_l2_loss += l2.item()
 
-    scheduler.step()
-    t2 = default_timer()
+    avg_l2_loss /= len(train_loader)
+    avg_mse_loss /= len(train_loader)
 
+    return avg_l2_loss, avg_mse_loss
+
+
+def validate(model, valid_loader, loss_fn, device):
     model.eval()
+    avg_loss = 0.0
+    with torch.no_grad():
+        for batch in valid_loader:
+            batch = batch.to(device)
+            out = model(batch)
+            avg_loss += loss_fn(
+                out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1)
+            ).item()
+    avg_loss /= len(valid_loader)
+    return avg_loss
 
-    ttrain[ep] = train_l2 / (ntrain * k)
 
-    print(ep, " time:", t2 - t1, " train_mse:", train_mse / len(train_loader))
+def main():
 
-t1 = default_timer()
-u_normalizer.cpu()
-model = model.cpu()
-test_l2_16 = 0.0
-test_l2_31 = 0.0
-test_l2_61 = 0.0
-model.eval()
-with torch.no_grad():
-    for batch in test_loader:
-        out = model(batch)
-        test_l2_16 += myloss(
-            u_normalizer.decode(out.view(batch_size2, -1)),
-            batch.y.view(batch_size2, -1),
+    # Setup training and validation datasets
+    dataset = ContactMapDataset(args.data_path)
+    lengths = [
+        int(len(dataset) * args.split_pct),
+        int(len(dataset) * round(1 - args.split_pct, 2)),
+    ]
+    train_dataset, valid_dataset = random_split(dataset, lengths)
+    train_loader = DataLoader(
+        train_dataset, args.batch_size, shuffle=True, drop_last=True
+    )
+    valid_loader = DataLoader(
+        valid_dataset, args.batch_size, shuffle=True, drop_last=True
+    )
+
+    # Setup device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    # Setup model, optimizer, loss function and scheduler
+    model = KernelNN(
+        args.width,
+        args.kernel_width,
+        args.depth,
+        args.edge_features,
+        args.node_features,
+    ).to(device)
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=args.lr, weight_decay=args.weight_decay
+    )
+    scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer, step_size=args.scheduler_step, gamma=args.scheduler_gamma
+    )
+    loss_fn = LpLoss(size_average=False)
+
+    # Start training
+    best_loss = float("inf")
+    for epoch in range(args.epochs):
+        time = default_timer()
+        avg_l2_train_loss, avg_mse_train_loss = train(
+            model, train_loader, optimizer, loss_fn, device
         )
-ttest61[ep] = test_l2_61 / ntest
-t2 = default_timer()
+        avg_valid_loss = validate(model, valid_loader, loss_fn, device)
+        scheduler.step()
+        print(
+            f"Epoch: {epoch}"
+            f"\tTime: {default_timer() - time}"
+            f"\tl2_train_loss: {avg_l2_train_loss}"
+            f"\tmse_train_loss: {avg_mse_train_loss}"
+            f"\tvalid_loss: {avg_valid_loss}"
+        )
 
-print(
-    " time:",
-    t2 - t1,
-    " train_mse:",
-    train_mse / len(train_loader),
-    " test16:",
-    test_l2_16 / ntest,
-    " test31:",
-    test_l2_31 / ntest,
-    " test61:",
-    test_l2_61 / ntest,
-)
-np.savetxt(path_train_err + ".txt", ttrain)
-np.savetxt(path_test_err16 + ".txt", ttest16)
-np.savetxt(path_test_err31 + ".txt", ttest31)
-np.savetxt(path_test_err61 + ".txt", ttest61)
+        # Save the model with the best validation loss
+        if avg_valid_loss < best_loss:
+            best_loss = avg_valid_loss
+            checkpoint = {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "scheduler_state_dict": scheduler.state_dict(),
+            }
+            torch.save(checkpoint, args.run_path / "best.pt")
 
-torch.save(model, path_model)
+
+if __name__ == "__main__":
+    args = parse_args()
+    main()
