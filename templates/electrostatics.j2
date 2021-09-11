@@ -1,0 +1,31 @@
+read
+    mol pqr {{ pqr_file }}
+end
+elec
+    mg-auto
+    mol 1
+
+    fgcent mol 1 # fine grid center
+    cgcent mol 1    # coarse grid center
+    fglen 52.958000 44.009000 38.329999
+    cglen 72.958000 72.958000 72.958000
+    dime 97 65 65
+    lpbe          # l=linear, n=non-linear Poisson-Boltzmann equation
+    bcfl sdh      # "Single Debye-Hueckel" boundary condition
+    pdie 2.0      # protein dielectric
+    sdie 78.0     # solvent dielectric
+    chgm spl2     # Cubic B-spline discretization of point charges on grid
+    srfm smol     # smoothed surface for dielectric and ion-accessibility coefficients
+    swin 0.3
+    temp 310.0    # temperature
+    sdens 10.0
+    calcenergy no
+    calcforce no
+    srad 1.40000   # solvent radius
+
+    ion charge +1 conc 0.15 radius 2.0
+    ion charge -1 conc 0.15 radius 1.8
+
+    write pot dx {{ dx_file }}
+end
+quit
