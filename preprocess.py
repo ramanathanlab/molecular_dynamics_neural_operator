@@ -6,10 +6,13 @@ from pathlib import Path
 import MDAnalysis as mda
 from gridData import Grid
 from tqdm import tqdm
-from typing import TYPE_CHECKING, TextIO
+from typing import TYPE_CHECKING, TextIO, Union, List
+from concurrent.futures import ProcessPoolExecutor
 
 if TYPE_CHECKING:
     import numpy.typing as npt
+
+PathLike = Union[Path, str]
 
 
 def run_subprocess(executable: str, stdout: TextIO, cwd: Path) -> int:
@@ -34,7 +37,10 @@ def write_in_file(in_file: Path, pqr_file: Path, dx_file: Path) -> None:
 
 
 def trajectory_to_electrostatic_grid(
-    pdb_file: str, traj_file: str, scratch_dir: str
+    pdb_file: PathLike,
+    traj_file: PathLike,
+    scratch_dir: PathLike,
+    verbose: bool = False,
 ) -> "npt.ArrayLike":
     """Converts a trajectory file to an electrostatic grid."""
     scratch_dir = Path(scratch_dir)
@@ -42,7 +48,8 @@ def trajectory_to_electrostatic_grid(
     atoms = u.select_atoms("all")
     grids = []
     tmp_prefix = scratch_dir / str(uuid.uuid4())
-    for _ in tqdm(u.trajectory):
+    iterable = tqdm(u.trajectory) if verbose else u.trajectory
+    for _ in iterable:
         tmp_pdb_file = tmp_prefix.with_suffix(".pdb")
         tmp_pqr_file = tmp_prefix.with_suffix(".pqr")
         tmp_log_file = tmp_prefix.with_suffix(".log")
@@ -75,3 +82,34 @@ def trajectory_to_electrostatic_grid(
     tmp_dx_file.unlink()
 
     return np.array(grids)
+
+
+def _worker(kwargs):
+    """Helper function for parallel data preprocessing."""
+    return trajectory_to_electrostatic_grid(**kwargs)
+
+
+def parallel_trajectory_to_electrostatic_grid(
+    pdb_files: List[PathLike],
+    traj_files: List[PathLike],
+    scratch_dir: PathLike,
+    num_workers: int = 10,
+) -> "npt.ArrayLike":
+
+    kwargs = [
+        {
+            "pdb_file": pdb_file,
+            "traj_file": traj_file,
+            "scratch_dir": scratch_dir,
+            "verbose": bool(i == 0),
+        }
+        for i, (pdb_file, traj_file) in enumerate(zip(pdb_files, traj_files))
+    ]
+
+    grids = []
+    with ProcessPoolExecutor(max_workers=num_workers) as executor:
+        for grid in executor.map(_worker, kwargs):
+            grids.append(grid)
+
+    grids = np.concatenate(grids)
+    return grids
