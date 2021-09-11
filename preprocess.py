@@ -41,8 +41,8 @@ def trajectory_to_electrostatic_grid(
     u = mda.Universe(str(pdb_file), str(traj_file))
     atoms = u.select_atoms("all")
     grids = []
+    tmp_prefix = scratch_dir / str(uuid.uuid4())
     for _ in tqdm(u.trajectory):
-        tmp_prefix = scratch_dir / str(uuid.uuid4())
         tmp_pdb_file = tmp_prefix.with_suffix(".pdb")
         tmp_pqr_file = tmp_prefix.with_suffix(".pqr")
         tmp_log_file = tmp_prefix.with_suffix(".log")
@@ -66,12 +66,6 @@ def trajectory_to_electrostatic_grid(
 
         # Parse dx file into np.ndarray containing the grid
         grids.append(Grid(str(tmp_dx_file)).grid)
-
-        # Remove temp files
-        tmp_pdb_file.unlink()
-        tmp_pqr_file.unlink()
-        tmp_log_file.unlink()
-        tmp_in_file.unlink()
-        tmp_dx_file.unlink()
-
+    
     return np.array(grids)
+
