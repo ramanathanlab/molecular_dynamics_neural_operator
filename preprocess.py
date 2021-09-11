@@ -34,7 +34,7 @@ def write_in_file(in_file: Path, pqr_file: Path, dx_file: Path) -> None:
 
 
 def trajectory_to_electrostatic_grid(
-        pdb_file: str, traj_file: str, scratch_dir: str
+    pdb_file: str, traj_file: str, scratch_dir: str
 ) -> "npt.ArrayLike":
     """Converts a trajectory file to an electrostatic grid."""
     scratch_dir = Path(scratch_dir)
@@ -66,6 +66,12 @@ def trajectory_to_electrostatic_grid(
 
         # Parse dx file into np.ndarray containing the grid
         grids.append(Grid(str(tmp_dx_file)).grid)
-    
-    return np.array(grids)
 
+    # Clean up temp files at the end
+    tmp_pdb_file.unlink()
+    tmp_pqr_file.unlink()
+    tmp_log_file.unlink()
+    tmp_in_file.unlink()
+    tmp_dx_file.unlink()
+
+    return np.array(grids)
