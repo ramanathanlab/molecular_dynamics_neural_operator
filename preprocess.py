@@ -79,11 +79,18 @@ def trajectory_to_electrostatic_grid(
         grids.append(Grid(str(tmp_dx_file)).grid)
 
         if i % save_interval == 0:
-            npy_file = (results_dir / Path(traj_file).name + f"_{i}").with_suffix("npy")
+            npy_file = results_dir / (Path(traj_file).with_suffix("").name + f"_{i}.npy")
             print(npy_file)
             np.save(npy_file, np.array(grids))
             del grids
             grids = []
+
+    # Clean up any remainder
+    if grids:
+        npy_file = results_dir / (Path(traj_file).with_suffix("").name + f"_{i}.npy")
+        np.save(npy_file, np.array(grids))
+        del grids
+        grids = []
 
     # Clean up temp files at the end
     tmp_pdb_file.unlink()
@@ -113,8 +120,8 @@ def parallel_trajectory_to_electrostatic_grid(
             "traj_file": traj_file,
             "scratch_dir": scratch_dir,
             "results_dir": results_dir,
-            "verbose": bool(i == 0),
             "save_interval": save_interval,
+            "verbose": bool(i % num_workers == 0),
         }
         for i, (pdb_file, traj_file) in enumerate(zip(pdb_files, traj_files))
     ]
