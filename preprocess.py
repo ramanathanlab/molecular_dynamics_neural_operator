@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 import MDAnalysis as mda
 from gridData import Grid
+from tqdm import tqdm
 from typing import TYPE_CHECKING, TextIO
 
 if TYPE_CHECKING:
@@ -27,20 +28,20 @@ def write_in_file(in_file: Path, pqr_file: Path, dx_file: Path) -> None:
     file_loader = jinja2.FileSystemLoader("templates")
     env = jinja2.Environment(loader=file_loader)
     template = env.get_template("electrostatics.j2")
-    contents = template.render(pqr_file=pqr_file, dx_file=dx_file)
+    contents = template.render(pqr_file=pqr_file, dx_file=dx_file.with_suffix(""))
     with open(in_file, "w") as f:
         f.write(contents)
 
 
 def trajectory_to_electrostatic_grid(
-    pdb_file: str, traj_file: str, scratch_dir: str
+        pdb_file: str, traj_file: str, scratch_dir: str
 ) -> "npt.ArrayLike":
     """Converts a trajectory file to an electrostatic grid."""
     scratch_dir = Path(scratch_dir)
     u = mda.Universe(str(pdb_file), str(traj_file))
     atoms = u.select_atoms("all")
     grids = []
-    for _ in u.trajectory:
+    for _ in tqdm(u.trajectory):
         tmp_prefix = scratch_dir / str(uuid.uuid4())
         tmp_pdb_file = tmp_prefix.with_suffix(".pdb")
         tmp_pqr_file = tmp_prefix.with_suffix(".pqr")
