@@ -40,16 +40,20 @@ def trajectory_to_electrostatic_grid(
     pdb_file: PathLike,
     traj_file: PathLike,
     scratch_dir: PathLike,
+    results_dir: PathLike,
     verbose: bool = False,
-) -> "npt.ArrayLike":
+    save_interval: int = 1000,
+) -> None:
     """Converts a trajectory file to an electrostatic grid."""
     scratch_dir = Path(scratch_dir)
+    results_dir = Path(results_dir)
     u = mda.Universe(str(pdb_file), str(traj_file))
     atoms = u.select_atoms("all")
     grids = []
     tmp_prefix = scratch_dir / str(uuid.uuid4())
-    iterable = tqdm(u.trajectory) if verbose else u.trajectory
-    for _ in iterable:
+    iterable = tqdm(enumerate(u.trajectory)) if verbose else enumerate(u.trajectory)
+
+    for i, _ in iterable:
         tmp_pdb_file = tmp_prefix.with_suffix(".pdb")
         tmp_pqr_file = tmp_prefix.with_suffix(".pqr")
         tmp_log_file = tmp_prefix.with_suffix(".log")
@@ -74,6 +78,13 @@ def trajectory_to_electrostatic_grid(
         # Parse dx file into np.ndarray containing the grid
         grids.append(Grid(str(tmp_dx_file)).grid)
 
+        if i % save_interval == 0:
+            npy_file = (results_dir / Path(traj_file).name + f"_{i}").with_suffix("npy")
+            print(npy_file)
+            np.save(npy_file, np.array(grids))
+            del grids
+            grids = []
+
     # Clean up temp files at the end
     tmp_pdb_file.unlink()
     tmp_pqr_file.unlink()
@@ -81,10 +92,8 @@ def trajectory_to_electrostatic_grid(
     tmp_in_file.unlink()
     tmp_dx_file.unlink()
 
-    return np.array(grids)
 
-
-def _worker(kwargs):
+def _worker(kwargs) -> None:
     """Helper function for parallel data preprocessing."""
     return trajectory_to_electrostatic_grid(**kwargs)
 
@@ -93,23 +102,23 @@ def parallel_trajectory_to_electrostatic_grid(
     pdb_files: List[PathLike],
     traj_files: List[PathLike],
     scratch_dir: PathLike,
+    results_dir: PathLike,
     num_workers: int = 10,
-) -> "npt.ArrayLike":
+    save_interval: int = 1000,
+) -> None:
 
     kwargs = [
         {
             "pdb_file": pdb_file,
             "traj_file": traj_file,
             "scratch_dir": scratch_dir,
+            "results_dir": results_dir,
             "verbose": bool(i == 0),
+            "save_interval": save_interval,
         }
         for i, (pdb_file, traj_file) in enumerate(zip(pdb_files, traj_files))
     ]
 
-    grids = []
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
-        for grid in executor.map(_worker, kwargs):
-            grids.append(grid)
-
-    grids = np.concatenate(grids)
-    return grids
+        for _ in executor.map(_worker, kwargs):
+            pass
