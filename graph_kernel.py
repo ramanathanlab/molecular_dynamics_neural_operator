@@ -102,7 +102,7 @@ class NNConv_old(MessagePassing):
         self,
         in_channels,
         out_channels,
-        nn,
+        net,
         aggr="add",
         root_weight=True,
         bias=True,
@@ -112,7 +112,7 @@ class NNConv_old(MessagePassing):
 
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.nn = nn
+        self.net = net
         self.aggr = aggr
 
         if root_weight:
@@ -128,7 +128,7 @@ class NNConv_old(MessagePassing):
         self.reset_parameters()
 
     def reset_parameters(self):
-        reset(self.nn)
+        reset(self.net)
         size = self.in_channels
         uniform(size, self.root)
         uniform(size, self.bias)
@@ -140,7 +140,7 @@ class NNConv_old(MessagePassing):
         return self.propagate(edge_index, x=x, pseudo=pseudo)
 
     def message(self, x_j, pseudo):
-        weight = self.nn(pseudo).view(-1, self.in_channels, self.out_channels)
+        weight = self.net(pseudo).view(-1, self.in_channels, self.out_channels)
         return torch.matmul(x_j.unsqueeze(1), weight).squeeze(1)
 
     def update(self, aggr_out, x):
@@ -198,6 +198,9 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data):
         x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        print("x", x.shape)
+        print("edge_index", edge_index.shape)
+        print("edge_attr", edge_attr.shape)
         x = self.fc1(x)
         for k in range(self.depth):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
@@ -219,7 +222,7 @@ def parse_args():
     parser.add_argument("--width", type=int, default=64)
     parser.add_argument("--kernel_width", type=int, default=1024)
     parser.add_argument("--depth", type=int, default=6)
-    parser.add_argument("--node_features", type=int, default=6)
+    parser.add_argument("--node_features", type=int, default=20)
     parser.add_argument("--edge_features", type=int, default=6)
     parser.add_argument("--split_pct", type=float, default=0.8)
     args = parser.parse_args()
@@ -239,10 +242,11 @@ def train(model, train_loader, optimizer, loss_fn, device):
     avg_mse_loss = 0.0
     avg_l2_loss = 0.0
     for batch in train_loader:
-        batch = batch.to(device)
+        batch = batch["data"].to(device)
 
         optimizer.zero_grad()
         out = model(batch)
+        print("out.shape:", out.shape)
         mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
         # mse.backward()
         loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
@@ -266,7 +270,7 @@ def validate(model, valid_loader, loss_fn, device):
     avg_loss = 0.0
     with torch.no_grad():
         for batch in valid_loader:
-            batch = batch.to(device)
+            batch = batch["data"].to(device)
             out = model(batch)
             avg_loss += loss_fn(
                 out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1)

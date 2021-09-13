@@ -29,7 +29,7 @@ class ContactMapDataset(Dataset):
         self,
         path: PathLike,
         dataset_name: str = "contact_map",
-        positions_dset_name: str = "positions",
+        positions_dset_name: str = "point_cloud",
         scalar_dset_names: List[str] = [],
         node_feature: str = "amino_acid_onehot",
         constant_num_node_features: int = 20,
@@ -120,7 +120,7 @@ class ContactMapDataset(Dataset):
         # And looks like [Ax, Ay, Az, Bx, By, Bz]
         edge_attr = np.array(
             [
-                np.concatenate((node_positions[:, i], node_positions[:, j]).flatten())
+                np.concatenate((node_positions[:, i], node_positions[:, j])).flatten()
                 for i, j in zip(edge_index[0], edge_index[1])
             ]
         )
