@@ -90,6 +90,11 @@ class ContactMapDataset(Dataset):
             self.edge_attrs = f[edge_attr_dset_name][...]
             if node_feature_dset_name is not None:
                 self._node_features_dset = f[node_feature_dset_name][...]
+ 
+        # Truncate dataset for shorter training time
+        ntrain = 100000
+        self.edge_indices = self.edge_indices[:ntrain]
+        self.edge_attrs = self.edge_attrs[:ntrain]
 
         if len(self.edge_indices) - self.window_size - self.horizon + 1 < 0:
             raise ValueError(
@@ -98,9 +103,9 @@ class ContactMapDataset(Dataset):
 
         self.node_features = self._compute_node_features(node_feature)
 
-        print(len(self.edge_indices))
-        print(self.edge_indices.shape)
-        print(self.edge_indices[0].shape)
+        #print(len(self.edge_indices))
+        #print(self.edge_indices.shape)
+        #print(self.edge_indices[0].shape)
 
     def _compute_node_features(self, node_feature: str) -> np.ndarray:
         if node_feature == "constant":
@@ -147,10 +152,10 @@ class ContactMapDataset(Dataset):
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
         edge_index_t = torch.from_numpy(edge_index_t).to(torch.long)
 
-        print("node_features:", node_features.shape)
-        print("edge_index_s:", edge_index_s.shape)
-        print("edge_attr:", edge_attr.shape)
-        print("edge_index_t:", edge_index_t.shape)
+        #print("node_features:", node_features.shape)
+        #print("edge_index_s:", edge_index_s.shape)
+        #print("edge_attr:", edge_attr.shape)
+        #print("edge_index_t:", edge_index_t.shape)
 
         # Construct torch_geometric data object
         data = PairData(

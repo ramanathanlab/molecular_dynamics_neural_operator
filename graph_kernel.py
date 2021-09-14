@@ -265,15 +265,11 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data):
         x, edge_index, edge_attr = data.x, data.edge_index_s, data.edge_attr
-        print("x", x.shape)
-        print("edge_index", edge_index.shape)
-        print("edge_attr", edge_attr.shape)
         x = self.fc1(x)
         for k in range(self.depth):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
 
         x = self.fc2(x)
-        print("nn_x:", x.shape)
         return x
 
 
@@ -316,7 +312,6 @@ def train(model, decoder, train_loader, optimizer, loss_fn, device):
 
         optimizer.zero_grad()
         out = model(batch)
-        print("out.shape:", out.shape)
         rloss = recon_loss(decoder, out, batch.edge_index_t)
         rloss.backward()
 
