@@ -289,6 +289,10 @@ def parse_args():
     parser.add_argument("--node_features", type=int, default=20)
     parser.add_argument("--edge_features", type=int, default=6)
     parser.add_argument("--split_pct", type=float, default=0.8)
+    parser.add_argument("--num_data_workers", type=int, default=2)
+    parser.add_argument("--prefetch_factor", type=int, default=8)
+    parser.add_argument("--persistent_workers", type=bool, default=True)
+    parser.add_argument("--non_blocking", type=bool, default=True)
     args = parser.parse_args()
 
     # Validation of arguments
@@ -307,7 +311,7 @@ def train(model, decoder, train_loader, optimizer, loss_fn, device):
     # avg_l2_loss = 0.0
     avg_rloss = 0.0
     for batch in train_loader:
-        batch = batch.to(device)
+        batch = batch.to(device, non_blocking=args.non_blocking)
         # y = batch.edge_index_t
 
         optimizer.zero_grad()
@@ -340,7 +344,7 @@ def validate(model, decoder, valid_loader, loss_fn, device):
     avg_loss = 0.0
     with torch.no_grad():
         for batch in valid_loader:
-            data = batch.to(device)
+            data = batch.to(device, non_blocking=args.non_blocking)
             out = model(data)
             avg_loss += recon_loss(decoder, out, batch.edge_index_t).item()
             # avg_loss += loss_fn(
@@ -351,6 +355,9 @@ def validate(model, decoder, valid_loader, loss_fn, device):
 
 
 def main():
+
+    # Set available number of cores
+    torch.set_num_threads(1 if args.num_data_workers == 0 else args.num_data_workers)
 
     # Setup training and validation datasets
     dataset = ContactMapDataset(args.data_path)
@@ -364,6 +371,10 @@ def main():
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=True,
+        pin_memory=True,
+        num_workers=args.num_data_workers,
+        prefetch_factor=args.prefetch_factor,
+        persistent_workers=args.persistent_workers,
     )
 
     print("Split training and validation sets")
