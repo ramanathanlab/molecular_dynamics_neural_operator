@@ -80,6 +80,10 @@ class ContactMapDataset(Dataset):
 
         self.node_features = self._compute_node_features(node_feature)
 
+        print(len(self.edge_indices))
+        print(self.edge_indices.shape)
+        print(self.edge_indices[0].shape)
+
     def _compute_node_features(self, node_feature: str) -> np.ndarray:
         if node_feature == "constant":
             node_features = np.ones((self.num_nodes, self._constant_num_node_features))
@@ -102,7 +106,7 @@ class ContactMapDataset(Dataset):
         node_features = self.node_features
 
         # Get adjacency list
-        edge_index = self.edge_indices[idx, ...].reshape(2, -1)  # [2, num_edges]
+        edge_index = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]
 
         # Get edge attributes with shape (num_edges, num_edge_features)
         # Each edge attribute is the positions of both atoms A,B
@@ -117,7 +121,7 @@ class ContactMapDataset(Dataset):
         )
 
         # Get adjacency list at the prediction index
-        y = self.edge_indices[pred_idx, ...].reshape(2, -1)  # [2, num_edges]
+        y = self.edge_indices[pred_idx].reshape(2, -1)  # [2, num_edges]
 
         # Convert to torch.Tensor
         node_features = torch.from_numpy(node_features).to(torch.float32)
@@ -125,9 +129,15 @@ class ContactMapDataset(Dataset):
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
         y = torch.from_numpy(y).to(torch.long)
 
+        print("node_features:", node_features.shape)
+        print("edge_index:", edge_index.shape)
+        print("edge_attr:", edge_attr.shape)
+        print("y:", y.shape)
+
         # Construct torch_geometric data object
         data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
 
         sample = {"data": data, "y": y}
 
         return sample
+

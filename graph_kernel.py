@@ -324,6 +324,9 @@ def main():
 
     # Setup training and validation datasets
     dataset = ContactMapDataset(args.data_path)
+    
+    print("Created dataset")
+
     train_loader, valid_loader = train_valid_split(
         dataset,
         args.split_pct,
@@ -332,6 +335,8 @@ def main():
         shuffle=True,
         drop_last=True,
     )
+
+    print("Split training and validation sets")
 
     # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -344,6 +349,9 @@ def main():
         args.edge_features,
         args.node_features,
     ).to(device)
+
+    print("Initialized model")
+
     optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
     )
@@ -351,6 +359,8 @@ def main():
         optimizer, step_size=args.scheduler_step, gamma=args.scheduler_gamma
     )
     loss_fn = LpLoss(size_average=False)
+
+    print("Started training")
 
     # Start training
     best_loss = float("inf")
