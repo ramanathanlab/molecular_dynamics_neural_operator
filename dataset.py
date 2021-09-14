@@ -2,7 +2,7 @@ import torch
 import h5py
 import numpy as np
 from pathlib import Path
-from typing import List, Union
+from typing import Union, Optional
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 
@@ -28,121 +28,117 @@ class ContactMapDataset(Dataset):
     def __init__(
         self,
         path: PathLike,
-        dataset_name: str = "contact_map",
-        positions_dset_name: str = "point_cloud",
-        scalar_dset_names: List[str] = [],
+        edge_index_dset_name: str = "contact_map",
+        edge_attr_dset_name: str = "point_cloud",
+        node_feature_dset_name: Optional[str] = "amino_acid",
         node_feature: str = "amino_acid_onehot",
         constant_num_node_features: int = 20,
-        scalar_requires_grad: bool = False,
+        window_size: int = 1,
+        horizon: int = 1,
     ):
         """
         Parameters
         ----------
         path : PathLike
             Path to h5 file containing contact matrices.
-        dataset_name : str
+        edge_index_dset_name : str
             Name of contact map dataset in HDF5 file.
-        positions_dset_name : str
+        edge_attr_dset_name : str
             Name of positions dataset in HDF5 file.
-        scalar_dset_names : List[str]
-            List of scalar dataset names inside HDF5 file to be passed
-            to training logs.
         node_feature : str
             Type of node features to use. Available options are `constant`,
             `identity`, and `amino_acid_onehot`. If `constant` is selected,
             `constant_num_node_features` must be selected.
         constant_num_node_features : int
             Number of node features when using constant `node_feature` vectors.
-        scalar_requires_grad : bool
-            Sets requires_grad torch.Tensor parameter for scalars specified by
-            `scalar_dset_names`. Set to True, to use scalars for multi-task
-            learning. If scalars are only required for plotting, then set it as False.
+        window_size : int, default=1
+            Number of timesteps considered for prediction.
+        horizon : int, default=1
+            How many time steps to predict ahead.
+
+        Raises
+        ------
+        ValueError
+            If the sum of :obj:`window_size` and :obj:`horizon` is longer
+            than the input data.
         """
-        self._file_path = str(path)
-        self._dataset_name = dataset_name
-        self._positions_dset_name = positions_dset_name
-        self._scalar_dset_names = scalar_dset_names
         self._constant_num_node_features = constant_num_node_features
-        self._scalar_requires_grad = scalar_requires_grad
-        self._initialized = False
+        self.window_size = window_size
+        self.horizon = horizon
 
-        # Get length and labels
-        with self._open_h5_file() as f:
-            self._labels = f["amino_acids"][...]
-            self._len = len(f[self._dataset_name])
+        # Get length
+        with h5py.File(path, "r", libver="latest", swmr=False) as f:
+            # COO formated ragged arrays
+            self.edge_indices = f[edge_index_dset_name][...]
+            self.edge_attrs = f[edge_attr_dset_name][...]
+            if node_feature_dset_name is not None:
+                self._node_features_dset = f[node_feature_dset_name][...]
 
-        self._node_features = self._select_node_features(node_feature)
+        if len(self.edge_indices) - self.window_size - self.horizon + 1 < 0:
+            raise ValueError(
+                "The sum of window_size and horizon is longer than the input data"
+            )
 
-        # Convert to torch.Tensor
-        self._node_features = torch.from_numpy(self._node_features).to(torch.float32)
-        self._labels = torch.from_numpy(self._labels).to(torch.long)
+        self.node_features = self._compute_node_features(node_feature)
+        self.edge_attrs = self._compute_edge_attrs()
 
-    @property
-    def num_nodes(self) -> int:
-        return len(self._labels)
+    def _compute_edge_attrs(self):
+        # Each edge attribute is the positions of both atoms A,B
+        # And looks like [Ax, Ay, Az, Bx, By, Bz]
 
-    def _select_node_features(self, node_feature: str) -> np.ndarray:
+        edge_attrs = []
+        for edge_index, edge_attr in zip(self.edge_indices, self.edge_attrs):
+            edge_index = edge_index.reshape(2, -1)  # [2, num_edges]
+            edge_attr = np.array(
+                [
+                    np.concatenate((edge_attr[:, i], edge_attr[:, j])).flatten()
+                    for i, j in zip(edge_index[0], edge_index[1])
+                ]
+            )
+            edge_attrs.append(edge_attr)
+
+        # edge_attrs is [N, num_edges, num_edge_features], where num_edges and num_edge_features are ragged
+        return edge_attrs
+
+    def _compute_node_features(self, node_feature: str) -> np.ndarray:
         if node_feature == "constant":
             node_features = np.ones((self.num_nodes, self._constant_num_node_features))
         elif node_feature == "identity":
             node_features = np.eye(self.num_nodes)
         elif node_feature == "amino_acid_onehot":
-            node_features = aminoacid_int_to_onehot(self._labels)
+            node_features = aminoacid_int_to_onehot(self._node_features_dset)
         else:
             raise ValueError(f"node_feature: {node_feature} not supported.")
         return node_features
 
-    def _open_h5_file(self):
-        return h5py.File(self._file_path, "r", libver="latest", swmr=False)
-
     def __len__(self):
-        return self._len
+        return len(self.edge_indices) - self.window_size - self.horizon + 1
 
     def __getitem__(self, idx):
 
-        # Only happens once. Need to open h5 file in current process
-        if not self._initialized:
-            self._h5_file = self._open_h5_file()
-            self.dset = self._h5_file[self._dataset_name]
-            self.positions_dset = self._h5_file[self._positions_dset_name]
-            # Load scalar dsets
-            self.scalar_dsets = {
-                name: self._h5_file[name] for name in self._scalar_dset_names
-            }
-            self._initialized = True
+        pred_idx = idx + self.window_size + self.horizon - 1
+
+        # Get node features
+        node_features = self.node_features[idx]
 
         # Get adjacency list
-        edge_index = self.dset[idx, ...].reshape(2, -1)  # [2, num_edges]
+        edge_index = self.edge_indices[idx, ...].reshape(2, -1)  # [2, num_edges]
 
         # Get edge attributes with shape (num_edges, num_edge_features)
-        node_positions = self.positions_dset[idx]  # (3, num_nodes)
         # Each edge attribute is the positions of both atoms A,B
         # And looks like [Ax, Ay, Az, Bx, By, Bz]
-        edge_attr = np.array(
-            [
-                np.concatenate((node_positions[:, i], node_positions[:, j])).flatten()
-                for i, j in zip(edge_index[0], edge_index[1])
-            ]
-        )
+        edge_attr = self.edge_attrs[idx]
 
+        # Get adjacency list at the prediction index
+        y = self.edge_indices[pred_idx, ...].reshape(2, -1)  # [2, num_edges]
+
+        # Convert to torch.Tensor
+        node_features = torch.from_numpy(node_features).to(torch.float32)
         edge_index = torch.from_numpy(edge_index).to(torch.long)
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
+        y = torch.from_numpy(y).to(torch.long)
 
-        sample = {}
+        # Construct torch_geometric data object
+        data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr, y=y)
 
-        # Graph data object
-        sample["data"] = Data(
-            x=self._node_features,
-            edge_index=edge_index,
-            edge_attr=edge_attr,
-            y=self._labels,
-        )
-        # Add index into dataset to sample
-        sample["index"] = torch.tensor(idx, requires_grad=False)
-        # Add scalars
-        for name, dset in self.scalar_dsets.items():
-            sample[name] = torch.tensor(
-                dset[idx], requires_grad=self._scalar_requires_grad
-            )
-
-        return sample
+        return data
