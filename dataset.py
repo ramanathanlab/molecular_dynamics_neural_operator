@@ -30,7 +30,7 @@ class ContactMapDataset(Dataset):
         path: PathLike,
         edge_index_dset_name: str = "contact_map",
         edge_attr_dset_name: str = "point_cloud",
-        node_feature_dset_name: Optional[str] = "amino_acid",
+        node_feature_dset_name: Optional[str] = "amino_acids",
         node_feature: str = "amino_acid_onehot",
         constant_num_node_features: int = 20,
         window_size: int = 1,
@@ -66,7 +66,6 @@ class ContactMapDataset(Dataset):
         self.window_size = window_size
         self.horizon = horizon
 
-        # Get length
         with h5py.File(path, "r", libver="latest", swmr=False) as f:
             # COO formated ragged arrays
             self.edge_indices = f[edge_index_dset_name][...]
@@ -80,25 +79,6 @@ class ContactMapDataset(Dataset):
             )
 
         self.node_features = self._compute_node_features(node_feature)
-        self.edge_attrs = self._compute_edge_attrs()
-
-    def _compute_edge_attrs(self):
-        # Each edge attribute is the positions of both atoms A,B
-        # And looks like [Ax, Ay, Az, Bx, By, Bz]
-
-        edge_attrs = []
-        for edge_index, edge_attr in zip(self.edge_indices, self.edge_attrs):
-            edge_index = edge_index.reshape(2, -1)  # [2, num_edges]
-            edge_attr = np.array(
-                [
-                    np.concatenate((edge_attr[:, i], edge_attr[:, j])).flatten()
-                    for i, j in zip(edge_index[0], edge_index[1])
-                ]
-            )
-            edge_attrs.append(edge_attr)
-
-        # edge_attrs is [N, num_edges, num_edge_features], where num_edges and num_edge_features are ragged
-        return edge_attrs
 
     def _compute_node_features(self, node_feature: str) -> np.ndarray:
         if node_feature == "constant":
@@ -127,7 +107,14 @@ class ContactMapDataset(Dataset):
         # Get edge attributes with shape (num_edges, num_edge_features)
         # Each edge attribute is the positions of both atoms A,B
         # And looks like [Ax, Ay, Az, Bx, By, Bz]
-        edge_attr = self.edge_attrs[idx]
+        edge_attr = np.array(
+            [
+                np.concatenate(
+                    (self.edge_attrs[idx, :, i], self.edge_attrs[idx, :, j])
+                ).flatten()
+                for i, j in zip(edge_index[0], edge_index[1])
+            ]
+        )
 
         # Get adjacency list at the prediction index
         y = self.edge_indices[pred_idx, ...].reshape(2, -1)  # [2, num_edges]
