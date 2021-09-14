@@ -98,8 +98,8 @@ class ContactMapDataset(Dataset):
 
         pred_idx = idx + self.window_size + self.horizon - 1
 
-        # Get node features
-        node_features = self.node_features[idx]
+        # Get node features (the node features are constant per-graph)
+        node_features = self.node_features
 
         # Get adjacency list
         edge_index = self.edge_indices[idx, ...].reshape(2, -1)  # [2, num_edges]
