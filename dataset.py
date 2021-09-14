@@ -126,6 +126,8 @@ class ContactMapDataset(Dataset):
         y = torch.from_numpy(y).to(torch.long)
 
         # Construct torch_geometric data object
-        data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr, y=y)
+        data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
 
-        return data
+        sample = {"data": data, "y": y}
+
+        return sample

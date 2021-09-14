@@ -281,17 +281,18 @@ def train(model, train_loader, optimizer, loss_fn, device):
     avg_mse_loss = 0.0
     avg_l2_loss = 0.0
     for batch in train_loader:
-        batch = batch.to(device)
+        data = batch["data"].to(device)
+        y = batch["y"].to(device)
 
         optimizer.zero_grad()
-        out = model(batch)
+        out = model(data)
         print("out.shape:", out.shape)
-        mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
+        mse = F.mse_loss(out.view(-1, 1), y.view(-1, 1))
         # mse.backward()
-        loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
+        loss = torch.norm(out.view(-1) - y.view(-1), 1)
         loss.backward()
 
-        l2 = loss_fn(out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1))
+        l2 = loss_fn(out.view(args.batch_size, -1), y.view(args.batch_size, -1))
         # l2.backward()
 
         optimizer.step()
@@ -309,10 +310,11 @@ def validate(model, valid_loader, loss_fn, device):
     avg_loss = 0.0
     with torch.no_grad():
         for batch in valid_loader:
-            batch = batch.to(device)
-            out = model(batch)
+            data = batch["data"].to(device)
+            y = batch["y"].to(device)
+            out = model(data)
             avg_loss += loss_fn(
-                out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1)
+                out.view(args.batch_size, -1), y.view(args.batch_size, -1)
             ).item()
     avg_loss /= len(valid_loader)
     return avg_loss
