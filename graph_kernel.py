@@ -236,7 +236,7 @@ class KernelNN(torch.nn.Module):
         self.fc2 = torch.nn.Linear(width, 1)
 
     def forward(self, data):
-        x, edge_index, edge_attr = data.x, data.edge_index, data.edge_attr
+        x, edge_index, edge_attr = data.x, data.edge_index_s, data.edge_attr
         print("x", x.shape)
         print("edge_index", edge_index.shape)
         print("edge_attr", edge_attr.shape)

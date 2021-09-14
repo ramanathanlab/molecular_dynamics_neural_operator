@@ -19,6 +19,23 @@ def aminoacid_int_to_onehot(labels):
     return onehot
 
 
+class PairData(Data):
+    def __init__(self, x, edge_attr, edge_index_s, edge_index_t):
+        super().__init__()
+        self.x = x
+        self.edge_attr = edge_attr
+        self.edge_index_s = edge_index_s
+        self.edge_index_t = edge_index_t
+
+    def __inc__(self, key, value, *args, **kwargs):
+        if key == "edge_index_s":
+            return self.x_s.size(0)
+        if key == "edge_index_t":
+            return self.x_t.size(0)
+        else:
+            return super().__inc__(key, value, *args, **kwargs)
+
+
 class ContactMapDataset(Dataset):
     """
     PyTorch Dataset class to load contact matrix data. Uses HDF5
@@ -102,7 +119,7 @@ class ContactMapDataset(Dataset):
         node_features = self.node_features
 
         # Get adjacency list
-        edge_index = self.edge_indices[idx, ...].reshape(2, -1)  # [2, num_edges]
+        edge_index_s = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]
 
         # Get edge attributes with shape (num_edges, num_edge_features)
         # Each edge attribute is the positions of both atoms A,B
@@ -112,22 +129,25 @@ class ContactMapDataset(Dataset):
                 np.concatenate(
                     (self.edge_attrs[idx, :, i], self.edge_attrs[idx, :, j])
                 ).flatten()
-                for i, j in zip(edge_index[0], edge_index[1])
+                for i, j in zip(edge_index_s[0], edge_index_s[1])
             ]
         )
 
         # Get adjacency list at the prediction index
-        y = self.edge_indices[pred_idx, ...].reshape(2, -1)  # [2, num_edges]
+        edge_index_t = self.edge_indices[pred_idx].reshape(2, -1)  # [2, num_edges]
 
         # Convert to torch.Tensor
         node_features = torch.from_numpy(node_features).to(torch.float32)
-        edge_index = torch.from_numpy(edge_index).to(torch.long)
+        edge_index_s = torch.from_numpy(edge_index_s).to(torch.long)
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
-        y = torch.from_numpy(y).to(torch.long)
+        edge_index_t = torch.from_numpy(edge_index_t).to(torch.long)
 
         # Construct torch_geometric data object
-        data = Data(x=node_features, edge_index=edge_index, edge_attr=edge_attr)
+        data = PairData(
+            x=node_features,
+            edge_attr=edge_attr,
+            edge_index_s=edge_index_s,
+            edge_index_t=edge_index_t,
+        )
 
-        sample = {"data": data, "y": y}
-
-        return sample
+        return data
