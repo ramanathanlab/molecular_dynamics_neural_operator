@@ -11,9 +11,13 @@ from torch.utils.data import random_split, Dataset, DataLoader, Subset
 from torch_geometric.data import DataLoader
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
+from torch_geometric.nn import InnerProductDecoder
+from torch_geometric.utils import negative_sampling, remove_self_loops, add_self_loops
 
 
 from dataset import ContactMapDataset
+
+EPS = 1e-15
 
 
 def train_valid_split(
@@ -51,6 +55,30 @@ def train_valid_split(
     train_loader = DataLoader(train_dataset, **kwargs)
     valid_loader = DataLoader(valid_dataset, **kwargs)
     return train_loader, valid_loader
+
+
+def recon_loss(decoder, z, pos_edge_index, neg_edge_index=None) -> torch.Tensor:
+    r"""Given latent variables :obj:`z`, computes the binary cross
+    entropy loss for positive edges :obj:`pos_edge_index` and negative
+    sampled edges.
+    Args:
+        z (Tensor): The latent space :math:`\mathbf{Z}`.
+        pos_edge_index (LongTensor): The positive edges to train against.
+        neg_edge_index (LongTensor, optional): The negative edges to train
+            against. If not given, uses negative sampling to calculate
+            negative edges. (default: :obj:`None`)
+    """
+
+    pos_loss = -torch.log(decoder(z, pos_edge_index, sigmoid=True) + EPS).mean()
+
+    # Do not include self-loops in negative samples
+    pos_edge_index, _ = remove_self_loops(pos_edge_index)
+    pos_edge_index, _ = add_self_loops(pos_edge_index)
+    if neg_edge_index is None:
+        neg_edge_index = negative_sampling(pos_edge_index, z.size(0))
+    neg_loss = -torch.log(1 - decoder(z, neg_edge_index, sigmoid=True) + EPS).mean()
+
+    return pos_loss + neg_loss
 
 
 class LpLoss(object):
@@ -245,6 +273,7 @@ class KernelNN(torch.nn.Module):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
 
         x = self.fc2(x)
+        print("nn_x:", x.shape)
         return x
 
 
@@ -276,46 +305,52 @@ def parse_args():
     return args
 
 
-def train(model, train_loader, optimizer, loss_fn, device):
+def train(model, decoder, train_loader, optimizer, loss_fn, device):
     model.train()
-    avg_mse_loss = 0.0
-    avg_l2_loss = 0.0
+    # avg_mse_loss = 0.0
+    # avg_l2_loss = 0.0
+    avg_rloss = 0.0
     for batch in train_loader:
         batch = batch.to(device)
-        y = batch.edge_index_t
+        # y = batch.edge_index_t
 
         optimizer.zero_grad()
         out = model(batch)
         print("out.shape:", out.shape)
-        mse = F.mse_loss(out.view(-1, 1), y.view(-1, 1))
-        # mse.backward()
-        loss = torch.norm(out.view(-1) - y.view(-1), 1)
-        loss.backward()
+        rloss = recon_loss(decoder, out, batch.edge_index_t)
+        rloss.backward()
 
-        l2 = loss_fn(out.view(args.batch_size, -1), y.view(args.batch_size, -1))
+        # mse = F.mse_loss(out.view(-1, 1), y.view(-1, 1))
+        # mse.backward()
+        # loss = torch.norm(out.view(-1) - y.view(-1), 1)
+        # loss.backward()
+
+        # l2 = loss_fn(out.view(args.batch_size, -1), y.view(args.batch_size, -1))
         # l2.backward()
 
         optimizer.step()
-        avg_mse_loss += mse.item()
-        avg_l2_loss += l2.item()
+        # avg_mse_loss += mse.item()
+        # avg_l2_loss += l2.item()
+        avg_rloss += rloss.item()
 
-    avg_l2_loss /= len(train_loader)
-    avg_mse_loss /= len(train_loader)
+    # avg_l2_loss /= len(train_loader)
+    # avg_mse_loss /= len(train_loader)
+    avg_rloss /= len(train_loader)
 
-    return avg_l2_loss, avg_mse_loss
+    return avg_rloss
 
 
-def validate(model, valid_loader, loss_fn, device):
+def validate(model, decoder, valid_loader, loss_fn, device):
     model.eval()
     avg_loss = 0.0
     with torch.no_grad():
         for batch in valid_loader:
             data = batch.to(device)
-            y = batch.edge_index_t
             out = model(data)
-            avg_loss += loss_fn(
-                out.view(args.batch_size, -1), y.view(args.batch_size, -1)
-            ).item()
+            avg_loss += recon_loss(decoder, out, batch.edge_index_t).item()
+            # avg_loss += loss_fn(
+            #    out.view(args.batch_size, -1), y.view(args.batch_size, -1)
+            # ).item()
     avg_loss /= len(valid_loader)
     return avg_loss
 
@@ -324,7 +359,7 @@ def main():
 
     # Setup training and validation datasets
     dataset = ContactMapDataset(args.data_path)
-    
+
     print("Created dataset")
 
     train_loader, valid_loader = train_valid_split(
@@ -349,6 +384,7 @@ def main():
         args.edge_features,
         args.node_features,
     ).to(device)
+    decoder = InnerProductDecoder().to(device)
 
     print("Initialized model")
 
@@ -366,16 +402,13 @@ def main():
     best_loss = float("inf")
     for epoch in range(args.epochs):
         time = default_timer()
-        avg_l2_train_loss, avg_mse_train_loss = train(
-            model, train_loader, optimizer, loss_fn, device
-        )
-        avg_valid_loss = validate(model, valid_loader, loss_fn, device)
+        avg_train_loss = train(model, decoder, train_loader, optimizer, loss_fn, device)
+        avg_valid_loss = validate(model, decoder, valid_loader, loss_fn, device)
         scheduler.step()
         print(
             f"Epoch: {epoch}"
             f"\tTime: {default_timer() - time}"
-            f"\tl2_train_loss: {avg_l2_train_loss}"
-            f"\tmse_train_loss: {avg_mse_train_loss}"
+            f"\ttrain_loss: {avg_train_loss}"
             f"\tvalid_loss: {avg_valid_loss}"
         )
 
