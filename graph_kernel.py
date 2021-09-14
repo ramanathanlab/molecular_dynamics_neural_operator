@@ -1,17 +1,56 @@
 import argparse
+from typing import Tuple
 from pathlib import Path
 from timeit import default_timer
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import random_split
+from torch.utils.data import random_split, Dataset, DataLoader, Subset
 
 from torch_geometric.data import DataLoader
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
 
+
 from dataset import ContactMapDataset
+
+
+def train_valid_split(
+    dataset: Dataset, split_pct: float = 0.8, method: str = "random", **kwargs
+) -> Tuple[DataLoader, DataLoader]:
+    """Creates training and validation DataLoaders from :obj:`dataset`.
+    Parameters
+    ----------
+    dataset : Dataset
+        A PyTorch dataset class derived from :obj:`torch.utils.data.Dataset`.
+    split_pct : float
+        Percentage of data to be used as training data after a split.
+    method : str, default="random"
+        Method to split the data. For random split use "random", for a simple
+        partition, use "partition".
+    **kwargs
+        Keyword arguments to :obj:`torch.utils.data.DataLoader`. Includes,
+        :obj:`batch_size`, :obj:`drop_last`, etc (see `PyTorch Docs
+        <https://pytorch.org/docs/stable/data.html>`_).
+    Raises
+    ------
+    ValueError
+        If :obj:`method` is not "random" or "partition".
+    """
+    train_length = int(len(dataset) * split_pct)
+    if method == "random":
+        lengths = [train_length, len(dataset) - train_length]
+        train_dataset, valid_dataset = random_split(dataset, lengths)
+    elif method == "partition":
+        indices = list(range(len(dataset)))
+        train_dataset = Subset(dataset, indices[:train_length])
+        valid_dataset = Subset(dataset, indices[train_length:])
+    else:
+        raise ValueError(f"Invalid method: {method}.")
+    train_loader = DataLoader(train_dataset, **kwargs)
+    valid_loader = DataLoader(valid_dataset, **kwargs)
+    return train_loader, valid_loader
 
 
 class LpLoss(object):
@@ -283,16 +322,13 @@ def main():
 
     # Setup training and validation datasets
     dataset = ContactMapDataset(args.data_path)
-    lengths = [
-        int(len(dataset) * args.split_pct),
-        int(len(dataset) * round(1 - args.split_pct, 2)),
-    ]
-    train_dataset, valid_dataset = random_split(dataset, lengths)
-    train_loader = DataLoader(
-        train_dataset, args.batch_size, shuffle=True, drop_last=True
-    )
-    valid_loader = DataLoader(
-        valid_dataset, args.batch_size, shuffle=True, drop_last=True
+    train_loader, valid_loader = train_valid_split(
+        dataset,
+        args.split_pct,
+        method="partition",
+        batch_size=args.batch_size,
+        shuffle=True,
+        drop_last=True,
     )
 
     # Setup device
