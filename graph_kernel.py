@@ -1,4 +1,6 @@
 import argparse
+import numpy as np
+from tqdm import tqdm
 from typing import Tuple
 from pathlib import Path
 from timeit import default_timer
@@ -277,9 +279,10 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--run_path", type=Path, required=True)
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--lr", type=float, default=0.0001)
+    parser.add_argument("--lr", type=float, default=0.01)
     parser.add_argument("--weight_decay", type=float, default=5e-4)
     parser.add_argument("--scheduler_step", type=int, default=50)
     parser.add_argument("--scheduler_gamma", type=float, default=0.8)
@@ -289,15 +292,19 @@ def parse_args():
     parser.add_argument("--node_features", type=int, default=20)
     parser.add_argument("--edge_features", type=int, default=6)
     parser.add_argument("--split_pct", type=float, default=0.8)
-    parser.add_argument("--num_data_workers", type=int, default=2)
-    parser.add_argument("--prefetch_factor", type=int, default=8)
-    parser.add_argument("--persistent_workers", type=bool, default=True)
-    parser.add_argument("--non_blocking", type=bool, default=True)
+    parser.add_argument("--num_data_workers", type=int, default=0)
+    parser.add_argument("--prefetch_factor", type=int, default=2)
+    parser.add_argument("--persistent_workers", type=str, default="False")
+    parser.add_argument("--non_blocking", type=str, default="False")
     args = parser.parse_args()
 
     # Validation of arguments
     if not args.data_path.exists():
         raise ValueError(f"data_path does not exist: {args.data_path}")
+    args.persistent_workers = args.persistent_workers == "True"
+    args.non_blocking = args.non_blocking == "True"
+    
+
 
     # Make output directory
     args.run_path.mkdir()
@@ -310,7 +317,7 @@ def train(model, decoder, train_loader, optimizer, loss_fn, device):
     # avg_mse_loss = 0.0
     # avg_l2_loss = 0.0
     avg_rloss = 0.0
-    for batch in train_loader:
+    for batch in tqdm(train_loader):
         batch = batch.to(device, non_blocking=args.non_blocking)
         # y = batch.edge_index_t
 
@@ -355,6 +362,9 @@ def validate(model, decoder, valid_loader, loss_fn, device):
 
 
 def main():
+
+    torch.manual_seed(args.seed)
+    np.random.seed(args.seed)
 
     # Set available number of cores
     torch.set_num_threads(1 if args.num_data_workers == 0 else args.num_data_workers)

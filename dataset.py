@@ -36,6 +36,12 @@ class PairData(Data):
         else:
             return super().__inc__(key, value, *args, **kwargs)
 
+    def pin_memory(self):
+        self.x = self.x.pin_memory()
+        self.edge_attr = self.edge_attr.pin_memory()
+        self.edge_index_s = self.edge_index_s.pin_memory()
+        self.edge_index_t = self.edge_index_t.pin_memory()
+        return self
 
 class ContactMapDataset(Dataset):
     """
@@ -84,17 +90,18 @@ class ContactMapDataset(Dataset):
         self.window_size = window_size
         self.horizon = horizon
 
+        # Truncate dataset for shorter training time
+        ntrain = 100000
+
         with h5py.File(path, "r", libver="latest", swmr=False) as f:
             # COO formated ragged arrays
-            self.edge_indices = f[edge_index_dset_name][...]
-            self.edge_attrs = f[edge_attr_dset_name][...]
+            self.edge_indices = np.array(f[edge_index_dset_name][:ntrain])
+            self.edge_attrs = np.array(f[edge_attr_dset_name][:ntrain])
             if node_feature_dset_name is not None:
                 self._node_features_dset = f[node_feature_dset_name][...]
  
-        # Truncate dataset for shorter training time
-        ntrain = 100000
-        self.edge_indices = self.edge_indices[:ntrain]
-        self.edge_attrs = self.edge_attrs[:ntrain]
+        #self.edge_indices = self.edge_indices[:ntrain]
+        #self.edge_attrs = self.edge_attrs[:ntrain]
 
         if len(self.edge_indices) - self.window_size - self.horizon + 1 < 0:
             raise ValueError(
