@@ -281,11 +281,11 @@ def train(model, train_loader, optimizer, loss_fn, device):
     avg_mse_loss = 0.0
     avg_l2_loss = 0.0
     for batch in train_loader:
-        data = batch["data"].to(device)
-        y = batch["y"].to(device)
+        batch = batch.to(device)
+        y = batch.edge_index_t
 
         optimizer.zero_grad()
-        out = model(data)
+        out = model(batch)
         print("out.shape:", out.shape)
         mse = F.mse_loss(out.view(-1, 1), y.view(-1, 1))
         # mse.backward()
@@ -310,8 +310,8 @@ def validate(model, valid_loader, loss_fn, device):
     avg_loss = 0.0
     with torch.no_grad():
         for batch in valid_loader:
-            data = batch["data"].to(device)
-            y = batch["y"].to(device)
+            data = batch.to(device)
+            y = batch.edge_index_t
             out = model(data)
             avg_loss += loss_fn(
                 out.view(args.batch_size, -1), y.view(args.batch_size, -1)

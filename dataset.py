@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Union, Optional
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
+from torch_geometric.typing import OptTensor
 
 
 PathLike = Union[str, Path]
@@ -20,7 +21,7 @@ def aminoacid_int_to_onehot(labels):
 
 
 class PairData(Data):
-    def __init__(self, x, edge_attr, edge_index_s, edge_index_t):
+    def __init__(self, x: OptTensor = None, edge_attr: OptTensor = None, edge_index_s: OptTensor = None, edge_index_t: OptTensor = None,):
         super().__init__()
         self.x = x
         self.edge_attr = edge_attr
@@ -29,9 +30,9 @@ class PairData(Data):
 
     def __inc__(self, key, value, *args, **kwargs):
         if key == "edge_index_s":
-            return self.x_s.size(0)
+            return self.x.size(0)
         if key == "edge_index_t":
-            return self.x_t.size(0)
+            return self.x.size(0)
         else:
             return super().__inc__(key, value, *args, **kwargs)
 
@@ -147,9 +148,9 @@ class ContactMapDataset(Dataset):
         edge_index_t = torch.from_numpy(edge_index_t).to(torch.long)
 
         print("node_features:", node_features.shape)
-        print("edge_index:", edge_index.shape)
+        print("edge_index_s:", edge_index_s.shape)
         print("edge_attr:", edge_attr.shape)
-        print("y:", y.shape)
+        print("edge_index_t:", edge_index_t.shape)
 
         # Construct torch_geometric data object
         data = PairData(
