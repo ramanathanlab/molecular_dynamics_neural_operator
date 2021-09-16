@@ -13,11 +13,9 @@ from torch.utils.data import random_split, Dataset, DataLoader, Subset
 from torch_geometric.data import DataLoader
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
-from torch_geometric.nn import InnerProductDecoder
-from torch_geometric.utils import negative_sampling, remove_self_loops, add_self_loops
 
 
-from dataset import ContactMapDataset
+from dataset import ContactMapDataset, PairData
 
 EPS = 1e-15
 
@@ -57,30 +55,6 @@ def train_valid_split(
     train_loader = DataLoader(train_dataset, **kwargs)
     valid_loader = DataLoader(valid_dataset, **kwargs)
     return train_loader, valid_loader
-
-
-def recon_loss(decoder, z, pos_edge_index, neg_edge_index=None) -> torch.Tensor:
-    r"""Given latent variables :obj:`z`, computes the binary cross
-    entropy loss for positive edges :obj:`pos_edge_index` and negative
-    sampled edges.
-    Args:
-        z (Tensor): The latent space :math:`\mathbf{Z}`.
-        pos_edge_index (LongTensor): The positive edges to train against.
-        neg_edge_index (LongTensor, optional): The negative edges to train
-            against. If not given, uses negative sampling to calculate
-            negative edges. (default: :obj:`None`)
-    """
-
-    pos_loss = -torch.log(decoder(z, pos_edge_index, sigmoid=True) + EPS).mean()
-
-    # Do not include self-loops in negative samples
-    pos_edge_index, _ = remove_self_loops(pos_edge_index)
-    pos_edge_index, _ = add_self_loops(pos_edge_index)
-    if neg_edge_index is None:
-        neg_edge_index = negative_sampling(pos_edge_index, z.size(0))
-    neg_loss = -torch.log(1 - decoder(z, neg_edge_index, sigmoid=True) + EPS).mean()
-
-    return pos_loss + neg_loss
 
 
 class LpLoss(object):
@@ -254,7 +228,15 @@ class DenseNet(torch.nn.Module):
 
 
 class KernelNN(torch.nn.Module):
-    def __init__(self, width, ker_width, depth, ker_in, in_width=1, out_width=1):
+    def __init__(
+        self,
+        width: int,
+        ker_width: int,
+        depth: int,
+        ker_in: int,
+        in_width: int = 1,
+        out_width: int = 1,
+    ) -> None:
         super(KernelNN, self).__init__()
         self.depth = depth
 
@@ -263,9 +245,9 @@ class KernelNN(torch.nn.Module):
         kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
         self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
 
-        self.fc2 = torch.nn.Linear(width, 1)
+        self.fc2 = torch.nn.Linear(width, out_width)
 
-    def forward(self, data):
+    def forward(self, data: PairData) -> torch.Tensor:
         x, edge_index, edge_attr = data.x, data.edge_index_s, data.edge_attr
         x = self.fc1(x)
         for k in range(self.depth):
@@ -276,6 +258,7 @@ class KernelNN(torch.nn.Module):
 
 
 def parse_args():
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--run_path", type=Path, required=True)
@@ -287,6 +270,7 @@ def parse_args():
     parser.add_argument("--scheduler_step", type=int, default=50)
     parser.add_argument("--scheduler_gamma", type=float, default=0.8)
     parser.add_argument("--width", type=int, default=64)
+    parser.add_argument("--out_width", type=int, default=3)
     parser.add_argument("--kernel_width", type=int, default=1024)
     parser.add_argument("--depth", type=int, default=6)
     parser.add_argument("--node_features", type=int, default=20)
@@ -303,8 +287,6 @@ def parse_args():
         raise ValueError(f"data_path does not exist: {args.data_path}")
     args.persistent_workers = args.persistent_workers == "True"
     args.non_blocking = args.non_blocking == "True"
-    
-
 
     # Make output directory
     args.run_path.mkdir()
@@ -312,51 +294,41 @@ def parse_args():
     return args
 
 
-def train(model, decoder, train_loader, optimizer, loss_fn, device):
+def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
-    # avg_mse_loss = 0.0
-    # avg_l2_loss = 0.0
-    avg_rloss = 0.0
+    avg_loss = 0.0
     for batch in tqdm(train_loader):
         batch = batch.to(device, non_blocking=args.non_blocking)
-        # y = batch.edge_index_t
 
         optimizer.zero_grad()
         out = model(batch)
-        rloss = recon_loss(decoder, out, batch.edge_index_t)
-        rloss.backward()
 
-        # mse = F.mse_loss(out.view(-1, 1), y.view(-1, 1))
+        # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
         # mse.backward()
-        # loss = torch.norm(out.view(-1) - y.view(-1), 1)
+        # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
         # loss.backward()
 
-        # l2 = loss_fn(out.view(args.batch_size, -1), y.view(args.batch_size, -1))
-        # l2.backward()
+        l2 = loss_fn(out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1))
+        l2.backward()
 
         optimizer.step()
-        # avg_mse_loss += mse.item()
-        # avg_l2_loss += l2.item()
-        avg_rloss += rloss.item()
+        avg_loss += l2.item()
 
-    # avg_l2_loss /= len(train_loader)
-    # avg_mse_loss /= len(train_loader)
-    avg_rloss /= len(train_loader)
+    avg_loss /= len(train_loader)
 
-    return avg_rloss
+    return avg_loss
 
 
-def validate(model, decoder, valid_loader, loss_fn, device):
+def validate(model, valid_loader, loss_fn, device):
     model.eval()
     avg_loss = 0.0
     with torch.no_grad():
         for batch in valid_loader:
             data = batch.to(device, non_blocking=args.non_blocking)
             out = model(data)
-            avg_loss += recon_loss(decoder, out, batch.edge_index_t).item()
-            # avg_loss += loss_fn(
-            #    out.view(args.batch_size, -1), y.view(args.batch_size, -1)
-            # ).item()
+            avg_loss += loss_fn(
+                out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1)
+            ).item()
     avg_loss /= len(valid_loader)
     return avg_loss
 
@@ -399,8 +371,8 @@ def main():
         args.depth,
         args.edge_features,
         args.node_features,
+        args.out_width,
     ).to(device)
-    decoder = InnerProductDecoder().to(device)
 
     print("Initialized model")
 
@@ -418,8 +390,8 @@ def main():
     best_loss = float("inf")
     for epoch in range(args.epochs):
         time = default_timer()
-        avg_train_loss = train(model, decoder, train_loader, optimizer, loss_fn, device)
-        avg_valid_loss = validate(model, decoder, valid_loader, loss_fn, device)
+        avg_train_loss = train(model, train_loader, optimizer, loss_fn, device)
+        avg_valid_loss = validate(model, valid_loader, loss_fn, device)
         scheduler.step()
         print(
             f"Epoch: {epoch}"

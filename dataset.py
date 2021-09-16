@@ -21,12 +21,18 @@ def aminoacid_int_to_onehot(labels):
 
 
 class PairData(Data):
-    def __init__(self, x: OptTensor = None, edge_attr: OptTensor = None, edge_index_s: OptTensor = None, edge_index_t: OptTensor = None,):
+    def __init__(
+        self,
+        x: OptTensor = None,
+        y: OptTensor = None,
+        edge_attr: OptTensor = None,
+        edge_index_s: OptTensor = None,
+    ):
         super().__init__()
         self.x = x
+        self.y = y
         self.edge_attr = edge_attr
         self.edge_index_s = edge_index_s
-        self.edge_index_t = edge_index_t
 
     def __inc__(self, key, value, *args, **kwargs):
         if key == "edge_index_s":
@@ -38,10 +44,11 @@ class PairData(Data):
 
     def pin_memory(self):
         self.x = self.x.pin_memory()
+        self.y = self.y.pin_memory()
         self.edge_attr = self.edge_attr.pin_memory()
         self.edge_index_s = self.edge_index_s.pin_memory()
-        self.edge_index_t = self.edge_index_t.pin_memory()
         return self
+
 
 class ContactMapDataset(Dataset):
     """
@@ -83,9 +90,15 @@ class ContactMapDataset(Dataset):
         Raises
         ------
         ValueError
+            If :obj:`window_size` is greater than 1.
+        ValueError
             If the sum of :obj:`window_size` and :obj:`horizon` is longer
             than the input data.
         """
+
+        if window_size > 1:
+            raise ValueError("Currently supports a max window_size of 1")
+
         self._constant_num_node_features = constant_num_node_features
         self.window_size = window_size
         self.horizon = horizon
@@ -99,9 +112,6 @@ class ContactMapDataset(Dataset):
             self.edge_attrs = np.array(f[edge_attr_dset_name][:ntrain])
             if node_feature_dset_name is not None:
                 self._node_features_dset = f[node_feature_dset_name][...]
- 
-        #self.edge_indices = self.edge_indices[:ntrain]
-        #self.edge_attrs = self.edge_attrs[:ntrain]
 
         if len(self.edge_indices) - self.window_size - self.horizon + 1 < 0:
             raise ValueError(
@@ -109,10 +119,6 @@ class ContactMapDataset(Dataset):
             )
 
         self.node_features = self._compute_node_features(node_feature)
-
-        #print(len(self.edge_indices))
-        #print(self.edge_indices.shape)
-        #print(self.edge_indices[0].shape)
 
     def _compute_node_features(self, node_feature: str) -> np.ndarray:
         if node_feature == "constant":
@@ -150,27 +156,26 @@ class ContactMapDataset(Dataset):
             ]
         )
 
-        # Get adjacency list at the prediction index
-        edge_index_t = self.edge_indices[pred_idx].reshape(2, -1)  # [2, num_edges]
+        # Get the raw xyz positions (num_nodes, 3) at the prediction index
+        y = self.edge_attrs[pred_idx].transpose()
 
         # Convert to torch.Tensor
         node_features = torch.from_numpy(node_features).to(torch.float32)
         edge_index_s = torch.from_numpy(edge_index_s).to(torch.long)
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
-        edge_index_t = torch.from_numpy(edge_index_t).to(torch.long)
+        y = torch.from_numpy(y).to(torch.float32)
 
-        #print("node_features:", node_features.shape)
-        #print("edge_index_s:", edge_index_s.shape)
-        #print("edge_attr:", edge_attr.shape)
-        #print("edge_index_t:", edge_index_t.shape)
+        # print("node_features:", node_features.shape)
+        # print("edge_index_s:", edge_index_s.shape)
+        # print("edge_attr:", edge_attr.shape)
+        # print("y:", y.shape)
 
         # Construct torch_geometric data object
         data = PairData(
             x=node_features,
+            y=y,
             edge_attr=edge_attr,
             edge_index_s=edge_index_s,
-            edge_index_t=edge_index_t,
         )
 
         return data
-
