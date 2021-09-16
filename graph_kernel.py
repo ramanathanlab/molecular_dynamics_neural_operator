@@ -241,6 +241,8 @@ class KernelNN(torch.nn.Module):
     ) -> None:
         super(KernelNN, self).__init__()
         self.depth = depth
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
 
         self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
@@ -252,11 +254,16 @@ class KernelNN(torch.nn.Module):
         self.fc2 = torch.nn.Linear(width, out_width)
 
     def forward(self, data: PairData) -> torch.Tensor:
-        edge_index, edge_attr = data.edge_index_s, data.edge_attr
+        edge_index, edge_attr = data.edge_index, data.edge_attr
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
+        #emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
         emb = self.emb(data.x_aminoacid)
+        #print("emb:", emb.shape)
+        #print("data.x_aminoacid", data.x_aminoacid.shape)
+        #print("data.x_position:", data.x_position.shape)
         x = torch.cat((emb, data.x_position), dim=1)
+        #print("x:", x.shape) 
         x = self.fc1(x)
         for k in range(self.depth):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
@@ -281,7 +288,7 @@ def parse_args():
     parser.add_argument("--out_width", type=int, default=3)
     parser.add_argument("--kernel_width", type=int, default=1024)
     parser.add_argument("--depth", type=int, default=6)
-    parser.add_argument("--node_features", type=int, default=20)
+    parser.add_argument("--node_features", type=int, default=7)
     parser.add_argument("--edge_features", type=int, default=6)
     parser.add_argument("--num_embeddings", type=int, default=20)
     parser.add_argument("--embedding_dim", type=int, default=4)

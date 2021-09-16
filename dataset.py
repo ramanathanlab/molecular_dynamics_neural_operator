@@ -36,9 +36,13 @@ class PairData(Data):
         self.edge_attr = edge_attr
         self.edge_index = edge_index
 
+    @property
+    def num_nodes(self) -> int:
+        return self.x_aminoacid.size(0)
+
     def __inc__(self, key, value, *args, **kwargs):
         if key == "edge_index":
-            return self.x_aminoacid.size(0)
+            return self.num_nodes
         else:
             return super().__inc__(key, value, *args, **kwargs)
 
@@ -121,8 +125,11 @@ class ContactMapDataset(Dataset):
 
         # Put positions in order (N, num_nodes, 3)
         self.edge_attrs = np.transpose(self.edge_attrs, [0, 2, 1])
-        self.x_aminoacid = self._compute_node_features(node_feature)
-        self.x_aminoacid = torch.from_numpy(self.x_aminoacid).to(torch.float32)
+        #print(self._node_features_dset)
+        #print(self._node_features_dset.shape)
+        self.x_aminoacid = self._node_features_dset
+        #self.x_aminoacid = self._compute_node_features(node_feature)
+        self.x_aminoacid = torch.from_numpy(self.x_aminoacid).to(torch.long)
 
     def _compute_node_features(self, node_feature: str) -> np.ndarray:
         if node_feature == "constant":
@@ -169,10 +176,11 @@ class ContactMapDataset(Dataset):
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
         y = torch.from_numpy(y).to(torch.float32)
 
-        # print("node_features:", node_features.shape)
-        # print("edge_index:", edge_index.shape)
-        # print("edge_attr:", edge_attr.shape)
-        # print("y:", y.shape)
+        #print("x_aminoacid:", self.x_aminoacid.shape)
+        #print("x_position:", x_position.shape)
+        #print("edge_index:", edge_index.shape)
+        #print("edge_attr:", edge_attr.shape)
+        #print("y:", y.shape)
 
         # Construct torch_geometric data object
         data = PairData(
