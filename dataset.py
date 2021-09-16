@@ -23,30 +23,31 @@ def aminoacid_int_to_onehot(labels):
 class PairData(Data):
     def __init__(
         self,
-        x: OptTensor = None,
+        x_aminoacid: OptTensor = None,
+        x_position: OptTensor = None,
         y: OptTensor = None,
         edge_attr: OptTensor = None,
-        edge_index_s: OptTensor = None,
-    ):
+        edge_index: OptTensor = None,
+    ) -> None:
         super().__init__()
-        self.x = x
+        self.x_aminoacid = x_aminoacid
+        self.x_position = x_position
         self.y = y
         self.edge_attr = edge_attr
-        self.edge_index_s = edge_index_s
+        self.edge_index = edge_index
 
     def __inc__(self, key, value, *args, **kwargs):
-        if key == "edge_index_s":
-            return self.x.size(0)
-        if key == "edge_index_t":
-            return self.x.size(0)
+        if key == "edge_index":
+            return self.x_aminoacid.size(0)
         else:
             return super().__inc__(key, value, *args, **kwargs)
 
     def pin_memory(self):
-        self.x = self.x.pin_memory()
+        self.x_aminoacid = self.x_aminoacid.pin_memory()
+        self.x_position = self.x_position.pin_memory()
         self.y = self.y.pin_memory()
         self.edge_attr = self.edge_attr.pin_memory()
-        self.edge_index_s = self.edge_index_s.pin_memory()
+        self.edge_index = self.edge_index.pin_memory()
         return self
 
 
@@ -118,7 +119,10 @@ class ContactMapDataset(Dataset):
                 "The sum of window_size and horizon is longer than the input data"
             )
 
-        self.node_features = self._compute_node_features(node_feature)
+        # Put positions in order (N, num_nodes, 3)
+        self.edge_attrs = np.transpose(self.edge_attrs, [0, 2, 1])
+        self.x_aminoacid = self._compute_node_features(node_feature)
+        self.x_aminoacid = torch.from_numpy(self.x_aminoacid).to(torch.float32)
 
     def _compute_node_features(self, node_feature: str) -> np.ndarray:
         if node_feature == "constant":
@@ -138,11 +142,11 @@ class ContactMapDataset(Dataset):
 
         pred_idx = idx + self.window_size + self.horizon - 1
 
-        # Get node features (the node features are constant per-graph)
-        node_features = self.node_features
+        # Get the positions (num_nodes, 3)
+        x_position = self.edge_attrs[idx]
 
         # Get adjacency list
-        edge_index_s = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]
+        edge_index = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]
 
         # Get edge attributes with shape (num_edges, num_edge_features)
         # Each edge attribute is the positions of both atoms A,B
@@ -150,32 +154,33 @@ class ContactMapDataset(Dataset):
         edge_attr = np.array(
             [
                 np.concatenate(
-                    (self.edge_attrs[idx, :, i], self.edge_attrs[idx, :, j])
+                    (self.edge_attrs[idx, i, :], self.edge_attrs[idx, j, :])
                 ).flatten()
-                for i, j in zip(edge_index_s[0], edge_index_s[1])
+                for i, j in zip(edge_index[0], edge_index[1])
             ]
         )
 
         # Get the raw xyz positions (num_nodes, 3) at the prediction index
-        y = self.edge_attrs[pred_idx].transpose()
+        y = self.edge_attrs[pred_idx]
 
         # Convert to torch.Tensor
-        node_features = torch.from_numpy(node_features).to(torch.float32)
-        edge_index_s = torch.from_numpy(edge_index_s).to(torch.long)
+        x_position = torch.from_numpy(x_position).to(torch.float32)
+        edge_index = torch.from_numpy(edge_index).to(torch.long)
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
         y = torch.from_numpy(y).to(torch.float32)
 
         # print("node_features:", node_features.shape)
-        # print("edge_index_s:", edge_index_s.shape)
+        # print("edge_index:", edge_index.shape)
         # print("edge_attr:", edge_attr.shape)
         # print("y:", y.shape)
 
         # Construct torch_geometric data object
         data = PairData(
-            x=node_features,
+            x_aminoacid=self.x_aminoacid,
+            x_position=x_position,
             y=y,
             edge_attr=edge_attr,
-            edge_index_s=edge_index_s,
+            edge_index=edge_index,
         )
 
         return data
