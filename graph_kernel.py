@@ -14,6 +14,7 @@ from torch_geometric.data import DataLoader
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
 
+import wandb
 
 from dataset import ContactMapDataset, PairData
 
@@ -352,6 +353,8 @@ def validate(model, valid_loader, loss_fn, device):
 
 def main():
 
+    wandb.init(project="bba_gno", config=args)
+
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 
@@ -411,6 +414,7 @@ def main():
         time = default_timer()
         avg_train_loss = train(model, train_loader, optimizer, loss_fn, device)
         avg_valid_loss = validate(model, valid_loader, loss_fn, device)
+        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss})
         scheduler.step()
         print(
             f"Epoch: {epoch}"
