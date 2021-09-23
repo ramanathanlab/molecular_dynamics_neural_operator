@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch.utils.data import random_split, Dataset, DataLoader, Subset
 
 from torch_geometric.data import DataLoader
+from torch_geometric.loader import DataListLoader
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
 from torch_geometric.nn import DataParallel
@@ -25,7 +26,7 @@ EPS = 1e-15
 
 def train_valid_split(
     dataset: Dataset, split_pct: float = 0.8, method: str = "random", **kwargs
-) -> Tuple[DataLoader, DataLoader]:
+) -> Tuple[DataListLoader, DataListLoader]:
     """Creates training and validation DataLoaders from :obj:`dataset`.
     Parameters
     ----------
@@ -55,8 +56,8 @@ def train_valid_split(
         valid_dataset = Subset(dataset, indices[train_length:])
     else:
         raise ValueError(f"Invalid method: {method}.")
-    train_loader = DataLoader(train_dataset, **kwargs)
-    valid_loader = DataLoader(valid_dataset, **kwargs)
+    train_loader = DataListLoader(train_dataset, **kwargs)
+    valid_loader = DataListLoader(valid_dataset, **kwargs)
     return train_loader, valid_loader
 
 
@@ -323,7 +324,7 @@ def train(model, train_loader, optimizer, loss_fn, device):
         batch = batch.to(device, non_blocking=args.non_blocking)
 
         optimizer.zero_grad()
-        out = model.module(batch)
+        out = model(batch)
 
         # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
         # mse.backward()
@@ -347,7 +348,7 @@ def validate(model, valid_loader, loss_fn, device):
     with torch.no_grad():
         for batch in valid_loader:
             data = batch.to(device, non_blocking=args.non_blocking)
-            out = model.module(data)
+            out = model(data)
             avg_loss += loss_fn(
                 out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1)
             ).item()
