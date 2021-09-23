@@ -29,7 +29,7 @@ EPS = 1e-15
 
 
 def train_valid_split(
-    dataset: Dataset, split_pct: float = 0.8, method: str = "random", **kwargs
+        dataset: Dataset, split_pct: float = 0.8, method: str = "random", **kwargs
 ) -> Tuple[DataListLoader, DataListLoader]:
     """Creates training and validation DataLoaders from :obj:`dataset`.
     Parameters
@@ -150,14 +150,14 @@ class NNConv_old(MessagePassing):
     """
 
     def __init__(
-        self,
-        in_channels,
-        out_channels,
-        net,
-        aggr="add",
-        root_weight=True,
-        bias=True,
-        **kwargs,
+            self,
+            in_channels,
+            out_channels,
+            net,
+            aggr="add",
+            root_weight=True,
+            bias=True,
+            **kwargs,
     ):
         super(NNConv_old, self).__init__(aggr=aggr, **kwargs)
 
@@ -237,15 +237,15 @@ class DenseNet(torch.nn.Module):
 
 class KernelNN(torch.nn.Module):
     def __init__(
-        self,
-        width: int,
-        ker_width: int,
-        depth: int,
-        ker_in: int,
-        in_width: int = 1,
-        out_width: int = 1,
-        num_embeddings: int = 20,
-        embedding_dim: int = 4,
+            self,
+            width: int,
+            ker_width: int,
+            depth: int,
+            ker_in: int,
+            in_width: int = 1,
+            out_width: int = 1,
+            num_embeddings: int = 20,
+            embedding_dim: int = 4,
     ) -> None:
         super(KernelNN, self).__init__()
         self.depth = depth
@@ -265,13 +265,13 @@ class KernelNN(torch.nn.Module):
         edge_index, edge_attr = data.edge_index, data.edge_attr
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
-        #emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
+        # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
         emb = self.emb(data.x_aminoacid)
-        #print("emb:", emb.shape)
-        #print("data.x_aminoacid", data.x_aminoacid.shape)
-        #print("data.x_position:", data.x_position.shape)
+        # print("emb:", emb.shape)
+        # print("data.x_aminoacid", data.x_aminoacid.shape)
+        # print("data.x_position:", data.x_position.shape)
         x = torch.cat((emb, data.x_position), dim=1)
-        #print("x:", x.shape) 
+        # print("x:", x.shape)
         x = self.fc1(x)
         for k in range(self.depth):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
@@ -281,7 +281,6 @@ class KernelNN(torch.nn.Module):
 
 
 def parse_args():
-
     parser = argparse.ArgumentParser()
     parser.add_argument("--data_path", type=Path, required=True)
     parser.add_argument("--run_path", type=Path, required=True)
@@ -305,6 +304,7 @@ def parse_args():
     parser.add_argument("--prefetch_factor", type=int, default=2)
     parser.add_argument("--persistent_workers", type=str, default="False")
     parser.add_argument("--non_blocking", type=str, default="False")
+    parser.add_argument("--generate_movie", type=bool, default=True)
     args = parser.parse_args()
 
     # Validation of arguments
@@ -373,6 +373,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, threshold: flo
 
     return forecasts, dict(metrics)
 
+
 def get_contact_map(pair_data):
     row = pair_data.edge_index.cpu().numpy()[0]
     col = pair_data.edge_index.cpu().numpy()[1]
@@ -380,8 +381,9 @@ def get_contact_map(pair_data):
     dense_contact_map = coo_matrix((val, (row, col)), shape=(28, 28)).toarray()
     return dense_contact_map
 
+
 def make_propagation_movie(model, dataset, device, num_steps):
-    forecast, metrics = propogate(model, train_dataset, device, num_steps=num_steps)
+    forecast, metrics = recursive_propagation(model, train_dataset, device, num_steps=num_steps)
     filenames = []
     for i in range(num_steps):
         forecast_cm = get_contact_map(forecast[i])
@@ -400,6 +402,7 @@ def make_propagation_movie(model, dataset, device, num_steps):
         images.append(imageio.imread(filename))
     imageio.mimsave('/tmp/gno_movie/movie.gif', images)
     return metrics
+
 
 def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
@@ -436,14 +439,13 @@ def validate(model, valid_loader, loss_fn, device):
             out = model(batch)
             concat_y = torch.cat([data.y for data in batch]).to(out.device)
             avg_loss += loss_fn(
-                out.view(args.batch_size, -1),  concat_y.view(args.batch_size, -1)
+                out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1)
             ).item()
     avg_loss /= len(valid_loader)
     return avg_loss
 
 
 def main():
-
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 
@@ -503,10 +505,11 @@ def main():
         time = default_timer()
         avg_train_loss = train(model, train_loader, optimizer, loss_fn, device)
         avg_valid_loss = validate(model, valid_loader, loss_fn, device)
-        metrics = make_propagation_movie(model, valid_dataset, device, 20)
-        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss, 'MSE': metrics})
-        wandb.log(
-            {"valid_prediction_video": wandb.Video('/tmp/gno_movie/movie.gif', fps=2, format="gif")})
+        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss})
+        if args.generate_movie:
+            metrics = make_propagation_movie(model, valid_dataset, device, 20)
+            wandb.log({"valid_prediction_video": wandb.Video('/tmp/gno_movie/movie.gif', fps=2, format="gif"),
+                       'MSE': metrics})
         scheduler.step()
         print(
             f"Epoch: {epoch}"
