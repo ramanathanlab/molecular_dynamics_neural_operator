@@ -399,6 +399,7 @@ def make_propagation_movie(model, dataset, device, num_steps):
     for filename in filenames:
         images.append(imageio.imread(filename))
     imageio.mimsave('/tmp/gno_movie/movie.gif', images)
+    return metrics
 
 def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
@@ -502,8 +503,8 @@ def main():
         time = default_timer()
         avg_train_loss = train(model, train_loader, optimizer, loss_fn, device)
         avg_valid_loss = validate(model, valid_loader, loss_fn, device)
-        make_propagation_movie(model, valid_dataset, device, 20)
-        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss})
+        metrics = make_propagation_movie(model, valid_dataset, device, 20)
+        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss, 'MSE': metrics})
         wandb.log(
             {"valid_prediction_video": wandb.Video('/tmp/gno_movie/movie.gif', fps=2, format="gif")})
         scheduler.step()
