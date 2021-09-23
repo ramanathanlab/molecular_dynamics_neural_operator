@@ -306,6 +306,8 @@ def parse_args():
     args.persistent_workers = args.persistent_workers == "True"
     args.non_blocking = args.non_blocking == "True"
 
+    # use the weights and biases trial name to store output
+    args.run_path = args.run_path / wandb.run.name
     # Make output directory
     args.run_path.mkdir()
 
@@ -352,8 +354,6 @@ def validate(model, valid_loader, loss_fn, device):
 
 
 def main():
-
-    wandb.init(project="bba_gno", config=args)
 
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
@@ -436,5 +436,7 @@ def main():
 
 
 if __name__ == "__main__":
+    wandb.init(project="bba_gno")
     args = parse_args()
+    wandb.config.update(args)
     main()
