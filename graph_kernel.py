@@ -323,8 +323,7 @@ def train(model, train_loader, optimizer, loss_fn, device):
         batch = batch.to(device, non_blocking=args.non_blocking)
 
         optimizer.zero_grad()
-        pdb.set_trace()
-        out = model(batch)
+        out = model.module(batch)
 
         # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
         # mse.backward()
@@ -348,7 +347,7 @@ def validate(model, valid_loader, loss_fn, device):
     with torch.no_grad():
         for batch in valid_loader:
             data = batch.to(device, non_blocking=args.non_blocking)
-            out = model(data)
+            out = model.module(data)
             avg_loss += loss_fn(
                 out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1)
             ).item()
