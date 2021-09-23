@@ -4,6 +4,9 @@ from tqdm import tqdm
 from typing import Tuple
 from pathlib import Path
 from timeit import default_timer
+from collections import defaultdict
+from scipy.spatial import distance_matrix
+from scipy.sparse import coo_matrix
 
 import torch
 import torch.nn as nn
@@ -17,6 +20,8 @@ from torch_geometric.nn.inits import reset, uniform
 from torch_geometric.nn import DataParallel
 
 import wandb
+import os
+import imageio
 
 from dataset import ContactMapDataset, PairData
 
@@ -57,7 +62,7 @@ def train_valid_split(
         raise ValueError(f"Invalid method: {method}.")
     train_loader = DataListLoader(train_dataset, **kwargs)
     valid_loader = DataListLoader(valid_dataset, **kwargs)
-    return train_loader, valid_loader
+    return train_loader, valid_loader, train_dataset, valid_dataset
 
 
 class LpLoss(object):
@@ -316,6 +321,85 @@ def parse_args():
     return args
 
 
+def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairData:
+    contact_map = (distance_matrix(x_position, x_position) < threshold).astype("int8")
+    sparse_contact_map = coo_matrix(contact_map)
+    # print(sparse_contact_map.row)
+    # print(sparse_contact_map.col)
+    # Get adjacency list
+    edge_index = np.array([sparse_contact_map.row, sparse_contact_map.col])
+    # Get edge attributes with shape (num_edges, num_edge_features)
+    # Each edge attribute is the positions of both atoms A,B
+    # And looks like [Ax, Ay, Az, Bx, By, Bz]
+    edge_attr = np.array(
+        [
+            np.concatenate(
+                (x_position[i, :], x_position[j, :])
+            ).flatten()
+            for i, j in zip(edge_index[0], edge_index[1])
+        ]
+    )
+
+    x_position = torch.from_numpy(x_position).to(torch.float32)
+    edge_index = torch.from_numpy(edge_index).to(torch.long)
+    edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
+
+    # Construct torch_geometric data object
+    data = PairData(
+        x_aminoacid=x_aminoacid,
+        x_position=x_position,
+        edge_attr=edge_attr,
+        edge_index=edge_index,
+    )
+
+    return data
+
+
+def recursive_propagation(model, dataset, device, num_steps: int, threshold: float = 8.0):
+    forecasts = []
+    metrics = defaultdict(list)
+
+    model.eval()
+    with torch.no_grad():
+        input_ = dataset[0].to(device)
+
+        for i in tqdm(range(num_steps)):
+            input_ = input_.to(device)
+            output = model(input_)+-
+            x_position = output.detach().cpu().numpy()
+            metrics["mse"].append(((x_position - dataset[i + 1].x_position.cpu().numpy()) ** 2).mean())
+            input_ = construct_pairdata(x_position, input_.x_aminoacid, threshold=threshold)
+            forecasts.append(input_.to("cpu"))
+
+    return forecasts, dict(metrics)
+
+def get_contact_map(pair_data):
+    row = pair_data.edge_index.cpu().numpy()[0]
+    col = pair_data.edge_index.cpu().numpy()[1]
+    val = np.ones(len(row))
+    dense_contact_map = coo_matrix((val, (row, col)), shape=(28, 28)).toarray()
+    return dense_contact_map
+
+def make_propagation_movie(model, dataset, device, num_steps):
+    forecast, metrics = propogate(model, train_dataset, device, num_steps=num_steps)
+    filenames = []
+    for i in range(num_steps):
+        forecast_cm = get_contact_map(forecast[i])
+        real_cm = get_contact_map(dataset[i + 1])
+        fig, ax = plt.subplots(ncols=2, figsize=(10, 4))
+        ax[0].imshow(forecast_cm, cmap="cividis")
+        ax[1].imshow(real_cm, cmap="cividis")
+        fig.suptitle("Time Step {}".format(i + 1))
+        ax[0].set_title("Forecast")
+        ax[1].set_title("Real")
+        filename = '/tmp/gno_movie/frame{}.png'.format(i + 1)
+        filenames.append(filename)
+        plt.savefig(filename, dpi=150)
+    images = []
+    for filename in filenames:
+        images.append(imageio.imread(filename))
+    imageio.mimsave('/tmp/gno_movie/movie.gif', images)
+
 def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
     avg_loss = 0.0
@@ -370,7 +454,7 @@ def main():
 
     print("Created dataset")
 
-    train_loader, valid_loader = train_valid_split(
+    train_loader, valid_loader, train_dataset, valid_dataset = train_valid_split(
         dataset,
         args.split_pct,
         method="partition",
@@ -418,7 +502,10 @@ def main():
         time = default_timer()
         avg_train_loss = train(model, train_loader, optimizer, loss_fn, device)
         avg_valid_loss = validate(model, valid_loader, loss_fn, device)
+        make_propagation_movie(model, valid_dataset, device, 20)
         wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss})
+        wandb.log(
+            {"valid_prediction_video": wandb.Video('/tmp/gno_movie/movie.gif', fps=2, format="gif")})
         scheduler.step()
         print(
             f"Epoch: {epoch}"
