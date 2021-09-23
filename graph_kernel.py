@@ -326,6 +326,8 @@ def train(model, train_loader, optimizer, loss_fn, device):
         optimizer.zero_grad()
         out = model(batch)
 
+        pdb.set_trace()
+
         # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
         # mse.backward()
         # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
