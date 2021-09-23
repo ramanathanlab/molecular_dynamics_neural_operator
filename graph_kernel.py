@@ -13,6 +13,7 @@ from torch.utils.data import random_split, Dataset, DataLoader, Subset
 from torch_geometric.data import DataLoader
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
+from torch_geometric.nn import DataParallel
 
 import wandb
 
@@ -245,14 +246,14 @@ class KernelNN(torch.nn.Module):
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
 
-        self.emb = torch.nn.DataParallel(nn.Embedding(num_embeddings, embedding_dim))
+        self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
-        self.fc1 = torch.nn.DataParallel(torch.nn.Linear(in_width, width))
+        self.fc1 = torch.nn.Linear(in_width, width)
 
-        kernel = torch.nn.DataParallel(DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU))
+        kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
         self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
 
-        self.fc2 = torch.nn.DataParallel(torch.nn.Linear(width, out_width))
+        self.fc2 = torch.nn.Linear(width, out_width)
 
     def forward(self, data: PairData) -> torch.Tensor:
         edge_index, edge_attr = data.edge_index, data.edge_attr
@@ -385,7 +386,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Setup model, optimizer, loss function and scheduler
-    model = KernelNN(
+    model = DataParallel(KernelNN(
         args.width,
         args.kernel_width,
         args.depth,
@@ -394,7 +395,7 @@ def main():
         args.out_width,
         args.num_embeddings,
         args.embedding_dim,
-    ).to(device)
+    )).to(device)
 
     print("Initialized model")
 
