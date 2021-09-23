@@ -7,6 +7,7 @@ from timeit import default_timer
 from collections import defaultdict
 from scipy.spatial import distance_matrix
 from scipy.sparse import coo_matrix
+import matplotlib.pyplot as plt
 
 import torch
 import torch.nn as nn
@@ -363,7 +364,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, threshold: flo
     with torch.no_grad():
         input_ = dataset[0].to(device)
 
-        for i in tqdm(range(num_steps)):
+        for i in range(num_steps):
             input_ = input_.to(device)
             output = model.module(input_)
             x_position = output.detach().cpu().numpy()
