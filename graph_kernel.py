@@ -321,7 +321,7 @@ def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
     avg_loss = 0.0
     for batch in tqdm(train_loader):
-        batch = batch.to(device, non_blocking=args.non_blocking)
+        # batch = batch.to(device, non_blocking=args.non_blocking)
 
         optimizer.zero_grad()
         out = model(batch)
@@ -347,7 +347,7 @@ def validate(model, valid_loader, loss_fn, device):
     avg_loss = 0.0
     with torch.no_grad():
         for batch in valid_loader:
-            data = batch.to(device, non_blocking=args.non_blocking)
+            # data = batch.to(device, non_blocking=args.non_blocking)
             out = model(data)
             avg_loss += loss_fn(
                 out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1)
