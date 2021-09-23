@@ -245,14 +245,14 @@ class KernelNN(torch.nn.Module):
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
 
-        self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        self.emb = torch.nn.DataParallel(nn.Embedding(num_embeddings, embedding_dim))
 
-        self.fc1 = torch.nn.Linear(in_width, width)
+        self.fc1 = torch.nn.DataParallel(torch.nn.Linear(in_width, width))
 
-        kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
-        self.conv1 = nn.DataParallel(NNConv_old(width, width, kernel, aggr="mean"))
+        kernel = torch.nn.DataParallel(DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU))
+        self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
 
-        self.fc2 = torch.nn.Linear(width, out_width)
+        self.fc2 = torch.nn.DataParalle(torch.nn.Linear(width, out_width))
 
     def forward(self, data: PairData) -> torch.Tensor:
         edge_index, edge_attr = data.edge_index, data.edge_attr
