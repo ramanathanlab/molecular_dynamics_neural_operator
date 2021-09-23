@@ -250,7 +250,7 @@ class KernelNN(torch.nn.Module):
         self.fc1 = torch.nn.Linear(in_width, width)
 
         kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
-        self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
+        self.conv1 = nn.DataParallel(NNConv_old(width, width, kernel, aggr="mean"))
 
         self.fc2 = torch.nn.Linear(width, out_width)
 
