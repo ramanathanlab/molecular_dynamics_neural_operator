@@ -348,7 +348,7 @@ def validate(model, valid_loader, loss_fn, device):
     with torch.no_grad():
         for batch in valid_loader:
             # data = batch.to(device, non_blocking=args.non_blocking)
-            out = model(data)
+            out = model(batch)
             concat_y = torch.cat([data.y for data in batch]).to(out.device)
             avg_loss += loss_fn(
                 out.view(args.batch_size, -1),  concat_y.view(args.batch_size, -1)
