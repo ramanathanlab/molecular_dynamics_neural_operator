@@ -252,7 +252,7 @@ class KernelNN(torch.nn.Module):
         kernel = torch.nn.DataParallel(DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU))
         self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
 
-        self.fc2 = torch.nn.DataParalle(torch.nn.Linear(width, out_width))
+        self.fc2 = torch.nn.DataParallel(torch.nn.Linear(width, out_width))
 
     def forward(self, data: PairData) -> torch.Tensor:
         edge_index, edge_attr = data.edge_index, data.edge_attr
