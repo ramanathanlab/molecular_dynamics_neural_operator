@@ -16,6 +16,7 @@ from torch_geometric.nn.inits import reset, uniform
 from torch_geometric.nn import DataParallel
 
 import wandb
+import pdb
 
 from dataset import ContactMapDataset, PairData
 
@@ -322,6 +323,7 @@ def train(model, train_loader, optimizer, loss_fn, device):
         batch = batch.to(device, non_blocking=args.non_blocking)
 
         optimizer.zero_grad()
+        pdb.set_trace()
         out = model(batch)
 
         # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
