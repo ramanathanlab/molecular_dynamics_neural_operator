@@ -259,7 +259,7 @@ class KernelNN(torch.nn.Module):
 
         kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
         self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
-        self.conv2 = NNConv_old(width, width, kernel, aggr="mean")
+        # self.conv2 = NNConv_old(width, width, kernel, aggr="mean")
 
         self.fc2 = torch.nn.Linear(width, out_width)
 
@@ -277,7 +277,7 @@ class KernelNN(torch.nn.Module):
         x = F.relu(self.fc1(x))
         for k in range(self.depth):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
-            x = F.relu(self.conv2(x, edge_index, edge_attr))
+            # x = F.relu(self.conv2(x, edge_index, edge_attr))
         x = self.fc2(x)
         return x
 
@@ -307,6 +307,7 @@ def parse_args():
     parser.add_argument("--persistent_workers", type=str, default="False")
     parser.add_argument("--non_blocking", type=str, default="False")
     parser.add_argument("--generate_movie", type=bool, default=True)
+    parser.add_argument("--num_movie_frames", type=int, default=5)
     args = parser.parse_args()
 
     # Validation of arguments
@@ -361,6 +362,8 @@ def recursive_propagation(model, dataset, device, num_steps: int, threshold: flo
     forecasts = []
     metrics = defaultdict(list)
 
+    mse = torch.nn.MSELoss()
+
     model.eval()
     with torch.no_grad():
         input_ = dataset[0].to(device)
@@ -368,8 +371,9 @@ def recursive_propagation(model, dataset, device, num_steps: int, threshold: flo
         for i in range(num_steps):
             input_ = input_.to(device)
             output = model.module(input_)
+            calc_mse = mse(output, dataset[i+1].x_position)
+            metrics["mse"].append(calc_mse)
             x_position = output.detach().cpu().numpy()
-            metrics["mse"].append(((x_position - dataset[i + 1].x_position.cpu().numpy()) ** 2).mean())
             input_ = construct_pairdata(x_position, input_.x_aminoacid, threshold=threshold)
             forecasts.append(input_.to("cpu"))
 
