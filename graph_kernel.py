@@ -365,7 +365,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, threshold: flo
 
         for i in tqdm(range(num_steps)):
             input_ = input_.to(device)
-            output = model(input_)+-
+            output = model(input_)
             x_position = output.detach().cpu().numpy()
             metrics["mse"].append(((x_position - dataset[i + 1].x_position.cpu().numpy()) ** 2).mean())
             input_ = construct_pairdata(x_position, input_.x_aminoacid, threshold=threshold)
