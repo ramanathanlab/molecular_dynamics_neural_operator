@@ -474,13 +474,9 @@ def validate(model, valid_loader, loss_fn, device):
 
             if t_step == 10:
                 l2_over_time /= 10
-                l2_over_time.backward()
-
                 mse_over_time /= 10
-
-                optimizer.step()
-                avg_loss += l2_over_time.item()
-                avg_mse += mse_over_time.item()
+                avg_loss.append(l2_over_time.item())
+                avg_mse.append(mse_over_time.item())
                 # reset
                 t_step = 0
                 l2_over_time = 0.0
