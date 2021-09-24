@@ -109,7 +109,7 @@ class ContactMapDataset(Dataset):
         self.horizon = horizon
 
         # Truncate dataset for shorter training time
-        ntrain = 100000
+        # ntrain = 100000
 
         with h5py.File(path, "r", libver="latest", swmr=False) as f:
             # COO formated ragged arrays
