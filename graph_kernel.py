@@ -466,6 +466,7 @@ def validate(model, valid_loader, loss_fn, device):
     with torch.no_grad():
         for batch in valid_loader:
             # data = batch.to(device, non_blocking=args.non_blocking)
+            out = model(batch)
             concat_y = torch.cat([data.y for data in batch]).to(out.device)
             l2_over_time += loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
             mse_over_time += mse_fn(out, concat_y)
