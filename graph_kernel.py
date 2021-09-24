@@ -392,22 +392,23 @@ def get_contact_map(pair_data):
 def make_propagation_movie(model, dataset, device, num_steps):
     forecast = recursive_propagation(model, dataset, device, num_steps=num_steps)
     filenames = []
-    for i in range(num_steps):
-        forecast_cm = get_contact_map(forecast[i])
-        real_cm = get_contact_map(dataset[i + 1])
-        fig, ax = plt.subplots(ncols=2, figsize=(10, 4))
-        ax[0].imshow(forecast_cm, cmap="cividis")
-        ax[1].imshow(real_cm, cmap="cividis")
-        fig.suptitle("Time Step {}".format(i + 1))
-        ax[0].set_title("Forecast")
-        ax[1].set_title("Real")
-        filename = '/tmp/gno_movie/frame{}.png'.format(i + 1)
-        filenames.append(filename)
-        plt.savefig(filename, dpi=150)
+    for starting_point in [0, 500, 1000]:
+        for i in range(starting_point, starting_point+num_steps):
+            forecast_cm = get_contact_map(forecast[i])
+            real_cm = get_contact_map(dataset[i + 1])
+            fig, ax = plt.subplots(ncols=2, figsize=(10, 4))
+            ax[0].imshow(forecast_cm, cmap="cividis")
+            ax[1].imshow(real_cm, cmap="cividis")
+            fig.suptitle("Time Step {}".format(i + 1))
+            ax[0].set_title("Forecast")
+            ax[1].set_title("Real")
+            filename = '/tmp/gno_movie/frame{}.png'.format(i + 1)
+            filenames.append(filename)
+            plt.savefig(filename, dpi=150)
     images = []
     for filename in filenames:
         images.append(imageio.imread(filename))
-    imageio.mimsave('/tmp/gno_movie/movie.gif', images)
+    imageio.mimsave('/tmp/gno_movie/movie.mp4', images)
 
 
 def train(model, train_loader, optimizer, loss_fn, device):
@@ -521,11 +522,13 @@ def main():
         time = default_timer()
         avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
         avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
-        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
-                   'avg_train_mse': avg_train_mse, 'avg_valid_mse': avg_valid_mse})
+        video = None
         if args.generate_movie:
             make_propagation_movie(model, valid_dataset, device, args.num_movie_frames)
-            wandb.log({"valid_prediction_video": wandb.Video('/tmp/gno_movie/movie.gif', fps=2, format="gif")})
+            video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
+        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
+                   'avg_train_mse': avg_train_mse, 'avg_valid_mse': avg_valid_mse,
+                   'valid_prediction_video': video})
         scheduler.step()
         print(
             f"Epoch: {epoch}"
