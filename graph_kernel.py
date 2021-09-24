@@ -360,9 +360,8 @@ def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairD
 
 def recursive_propagation(model, dataset, device, num_steps: int, threshold: float = 8.0):
     forecasts = []
-    metrics = defaultdict(list)
 
-    mse = torch.nn.MSELoss()
+    # mse = torch.nn.MSELoss()
 
     model.eval()
     with torch.no_grad():
@@ -371,13 +370,13 @@ def recursive_propagation(model, dataset, device, num_steps: int, threshold: flo
         for i in range(num_steps):
             input_ = input_.to(device)
             output = model.module(input_)
-            calc_mse = mse(output, dataset[i+1].x_position)
-            metrics["mse"].append(calc_mse)
+            # calc_mse = mse(output, dataset[i+1].x_position)
+            # metrics["mse"].append(calc_mse)
             x_position = output.detach().cpu().numpy()
             input_ = construct_pairdata(x_position, input_.x_aminoacid, threshold=threshold)
             forecasts.append(input_.to("cpu"))
 
-    return forecasts, dict(metrics)
+    return forecasts
 
 
 def get_contact_map(pair_data):
@@ -389,7 +388,7 @@ def get_contact_map(pair_data):
 
 
 def make_propagation_movie(model, dataset, device, num_steps):
-    forecast, metrics = recursive_propagation(model, dataset, device, num_steps=num_steps)
+    forecast = recursive_propagation(model, dataset, device, num_steps=num_steps)
     filenames = []
     for i in range(num_steps):
         forecast_cm = get_contact_map(forecast[i])
@@ -407,12 +406,13 @@ def make_propagation_movie(model, dataset, device, num_steps):
     for filename in filenames:
         images.append(imageio.imread(filename))
     imageio.mimsave('/tmp/gno_movie/movie.gif', images)
-    return metrics
 
 
 def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
     avg_loss = 0.0
+    avg_mse = 0.0
+    mse_fn = torch.nn.MSELoss()
     for batch in tqdm(train_loader):
         # batch = batch.to(device, non_blocking=args.non_blocking)
 
@@ -428,17 +428,23 @@ def train(model, train_loader, optimizer, loss_fn, device):
         l2 = loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
         l2.backward()
 
+        mse_loss = mse_fn(out, concat_y)
+
         optimizer.step()
         avg_loss += l2.item()
+        avg_mse += mse_loss.item()
 
     avg_loss /= len(train_loader)
+    avg_mse /= len(train_loader)
 
-    return avg_loss
+    return avg_loss, avg_mse
 
 
 def validate(model, valid_loader, loss_fn, device):
     model.eval()
     avg_loss = 0.0
+    avg_mse = 0.0
+    mse_fn = torch.nn.MSELoss()
     with torch.no_grad():
         for batch in valid_loader:
             # data = batch.to(device, non_blocking=args.non_blocking)
@@ -447,8 +453,10 @@ def validate(model, valid_loader, loss_fn, device):
             avg_loss += loss_fn(
                 out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1)
             ).item()
+            avg_mse += mse_fn(out, concat_y)
     avg_loss /= len(valid_loader)
-    return avg_loss
+    avg_mse /= len(valid_loader)
+    return avg_loss, avg_mse
 
 
 def main():
@@ -509,13 +517,13 @@ def main():
     best_loss = float("inf")
     for epoch in range(args.epochs):
         time = default_timer()
-        avg_train_loss = train(model, train_loader, optimizer, loss_fn, device)
-        avg_valid_loss = validate(model, valid_loader, loss_fn, device)
-        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss})
+        avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
+        avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
+        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
+                   'avg_train_mse': avg_train_mse, 'avg_valid_mse': avg_valid_mse})
         if args.generate_movie:
-            metrics = make_propagation_movie(model, valid_dataset, device, 20)
-            wandb.log({"valid_prediction_video": wandb.Video('/tmp/gno_movie/movie.gif', fps=2, format="gif"),
-                       'MSE': metrics})
+            make_propagation_movie(model, valid_dataset, device, args.num_movie_frames)
+            wandb.log({"valid_prediction_video": wandb.Video('/tmp/gno_movie/movie.gif', fps=2, format="gif")})
         scheduler.step()
         print(
             f"Epoch: {epoch}"
