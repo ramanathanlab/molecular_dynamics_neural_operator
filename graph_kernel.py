@@ -23,6 +23,7 @@ from torch_geometric.nn import DataParallel
 import wandb
 import os
 import imageio
+import pdb
 
 from dataset import ContactMapDataset, PairData
 
@@ -510,6 +511,8 @@ def main():
         optimizer, step_size=args.scheduler_step, gamma=args.scheduler_gamma
     )
     loss_fn = LpLoss(size_average=False)
+
+    pdb.set_trace()
 
     print("Started training")
 
