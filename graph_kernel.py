@@ -411,6 +411,7 @@ def make_propagation_movie(model, dataset, device, num_steps):
 
 
 def train(model, train_loader, optimizer, loss_fn, device):
+    pdb.set_trace()
     model.train()
     avg_loss = []
     avg_mse = []
