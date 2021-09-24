@@ -24,6 +24,7 @@ import wandb
 import os
 import imageio
 import pdb
+import statistics
 
 from dataset import ContactMapDataset, PairData
 
@@ -411,8 +412,8 @@ def make_propagation_movie(model, dataset, device, num_steps):
 
 def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
-    avg_loss = 0.0
-    avg_mse = 0.0
+    avg_loss = []
+    avg_mse = []
     mse_fn = torch.nn.MSELoss()
     t_step = 0
     l2_over_time = 0.0
@@ -440,36 +441,52 @@ def train(model, train_loader, optimizer, loss_fn, device):
             mse_over_time /= 10
 
             optimizer.step()
-            avg_loss += l2_over_time.item()
-            avg_mse += mse_over_time.item()
+            avg_loss.append(l2_over_time.item())
+            avg_mse.append(mse_over_time.item())
             # reset
             t_step = 0
             l2_over_time = 0.0
             mse_over_time = 0.0
             optimizer.zero_grad()
 
-    avg_loss /= len(train_loader)
-    avg_mse /= len(train_loader)
+    avg_loss = statistics.mean(avg_loss)
+    avg_mse = statistics.mean(avg_mse)
 
     return avg_loss, avg_mse
 
 
 def validate(model, valid_loader, loss_fn, device):
     model.eval()
-    avg_loss = 0.0
-    avg_mse = 0.0
+    avg_loss = []
+    avg_mse = []
     mse_fn = torch.nn.MSELoss()
+    t_step = 0
+    l2_over_time = 0.0
+    mse_over_time = 0.0
     with torch.no_grad():
         for batch in valid_loader:
             # data = batch.to(device, non_blocking=args.non_blocking)
-            out = model(batch)
             concat_y = torch.cat([data.y for data in batch]).to(out.device)
-            avg_loss += loss_fn(
-                out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1)
-            ).item()
-            avg_mse += mse_fn(out, concat_y)
-    avg_loss /= len(valid_loader)
-    avg_mse /= len(valid_loader)
+            l2_over_time += loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
+            mse_over_time += mse_fn(out, concat_y)
+            t_step += 1
+
+            if t_step == 10:
+                l2_over_time /= 10
+                l2_over_time.backward()
+
+                mse_over_time /= 10
+
+                optimizer.step()
+                avg_loss += l2_over_time.item()
+                avg_mse += mse_over_time.item()
+                # reset
+                t_step = 0
+                l2_over_time = 0.0
+                mse_over_time = 0.0
+
+    avg_loss = statistics.mean(avg_loss)
+    avg_mse = statistics.mean(avg_mse)
     return avg_loss, avg_mse
 
 
