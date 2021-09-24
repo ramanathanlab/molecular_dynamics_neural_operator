@@ -367,7 +367,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, starting_point
     with torch.no_grad():
         input_ = dataset[0].to(device)
         for start in starting_points:
-            for i in range(start, start+num_steps):
+            for i in range(start, start + num_steps):
                 input_ = input_.to(device)
                 output = model.module(input_)
                 # calc_mse = mse(output, dataset[i+1].x_position)
@@ -391,7 +391,7 @@ def make_propagation_movie(model, dataset, device, num_steps):
     forecast = recursive_propagation(model, dataset, device, num_steps=5, starting_points=[0, 500, 1000])
     filenames = []
     for starting_point in [0, 500, 1000]:
-        for i in range(starting_point, starting_point+num_steps):
+        for i in range(starting_point, starting_point + num_steps):
             forecast_cm = get_contact_map(forecast.pop(0))
             real_cm = get_contact_map(dataset[i + 1])
             fig, ax = plt.subplots(ncols=2, figsize=(10, 4))
@@ -414,34 +414,39 @@ def train(model, train_loader, optimizer, loss_fn, device):
     avg_loss = 0.0
     avg_mse = 0.0
     mse_fn = torch.nn.MSELoss()
+    t_step = 0
+    l2_over_time = 0.0
+    mse_over_time = 0.0
     for batch in tqdm(train_loader):
         # batch = batch.to(device, non_blocking=args.non_blocking)
         # time controlled: time slices of 10
-        t_step = 0
-        l2_over_time = 0.0
-        mse_over_time = 0.0
-        while t_step < 10 :
+
+        out = model(batch)
+
+        # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
+        # mse.backward()
+        # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
+        # loss.backward()
+
+        concat_y = torch.cat([data.y for data in batch]).to(out.device)
+        l2_over_time += loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
+        mse_over_time += mse_fn(out, concat_y)
+        t_step += 1
+
+        if t_step == 10:
+            l2_over_time /= 10
+            l2_over_time.backward()
+
+            mse_over_time /= 10
+
+            optimizer.step()
+            avg_loss += l2_over_time.item()
+            avg_mse += mse_over_time.item()
+            # reset
+            t_step = 0
+            l2_over_time = 0.0
+            mse_over_time = 0.0
             optimizer.zero_grad()
-            out = model(batch)
-
-            # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
-            # mse.backward()
-            # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
-            # loss.backward()
-
-            concat_y = torch.cat([data.y for data in batch]).to(out.device)
-            l2_over_time += loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
-            mse_over_time += mse_fn(out, concat_y)
-            t_step += 1
-
-        l2_over_time /= 10
-        l2_over_time.backward()
-
-        mse_over_time /= 10
-
-        optimizer.step()
-        avg_loss += l2_over_time.item()
-        avg_mse += mse_over_time.item()
 
     avg_loss /= len(train_loader)
     avg_mse /= len(train_loader)
