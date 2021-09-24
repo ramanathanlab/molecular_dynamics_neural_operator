@@ -520,8 +520,6 @@ def main():
     )
     loss_fn = LpLoss(size_average=False)
 
-    pdb.set_trace()
-
     print("Started training")
 
     # Start training
