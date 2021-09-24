@@ -360,23 +360,20 @@ def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairD
     return data
 
 
-def recursive_propagation(model, dataset, device, num_steps: int, threshold: float = 8.0):
+def recursive_propagation(model, dataset, device, num_steps: int, starting_points: list, threshold: float = 8.0):
     forecasts = []
-
-    # mse = torch.nn.MSELoss()
-
     model.eval()
     with torch.no_grad():
         input_ = dataset[0].to(device)
-
-        for i in range(num_steps):
-            input_ = input_.to(device)
-            output = model.module(input_)
-            # calc_mse = mse(output, dataset[i+1].x_position)
-            # metrics["mse"].append(calc_mse)
-            x_position = output.detach().cpu().numpy()
-            input_ = construct_pairdata(x_position, input_.x_aminoacid, threshold=threshold)
-            forecasts.append(input_.to("cpu"))
+        for start in starting_points:
+            for i in range(start, start+num_steps):
+                input_ = input_.to(device)
+                output = model.module(input_)
+                # calc_mse = mse(output, dataset[i+1].x_position)
+                # metrics["mse"].append(calc_mse)
+                x_position = output.detach().cpu().numpy()
+                input_ = construct_pairdata(x_position, input_.x_aminoacid, threshold=threshold)
+                forecasts.append(input_.to("cpu"))
 
     return forecasts
 
@@ -390,11 +387,11 @@ def get_contact_map(pair_data):
 
 
 def make_propagation_movie(model, dataset, device, num_steps):
-    forecast = recursive_propagation(model, dataset, device, num_steps=1005)
+    forecast = recursive_propagation(model, dataset, device, num_steps=5, starting_points=[0, 500, 1000])
     filenames = []
     for starting_point in [0, 500, 1000]:
         for i in range(starting_point, starting_point+num_steps):
-            forecast_cm = get_contact_map(forecast[i])
+            forecast_cm = get_contact_map(forecast.pop(0))
             real_cm = get_contact_map(dataset[i + 1])
             fig, ax = plt.subplots(ncols=2, figsize=(10, 4))
             ax[0].imshow(forecast_cm, cmap="cividis")
