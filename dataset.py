@@ -113,8 +113,8 @@ class ContactMapDataset(Dataset):
 
         with h5py.File(path, "r", libver="latest", swmr=False) as f:
             # COO formated ragged arrays
-            self.edge_indices = np.array(f[edge_index_dset_name][:ntrain])
-            self.edge_attrs = np.array(f[edge_attr_dset_name][:ntrain])
+            self.edge_indices = np.array(f[edge_index_dset_name])
+            self.edge_attrs = np.array(f[edge_attr_dset_name])
             if node_feature_dset_name is not None:
                 self._node_features_dset = f[node_feature_dset_name][...]
 
