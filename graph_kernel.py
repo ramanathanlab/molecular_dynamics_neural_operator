@@ -387,9 +387,9 @@ def get_contact_map(pair_data):
 
 
 def make_propagation_movie(model, dataset, device, num_steps):
-    forecast = recursive_propagation(model, dataset, device, num_steps=5, starting_points=[0, 500, 1000])
+    forecast = recursive_propagation(model, dataset, device, num_steps=5, starting_points=[0, 25, 50])
     filenames = []
-    for starting_point in [0, 500, 1000]:
+    for starting_point in [0, 25, 50]:
         for i in range(starting_point, starting_point+num_steps):
             forecast_cm = get_contact_map(forecast.pop(0))
             real_cm = get_contact_map(dataset[i + 1])
