@@ -364,8 +364,8 @@ def recursive_propagation(model, dataset, device, num_steps: int, starting_point
     forecasts = []
     model.eval()
     with torch.no_grad():
-        input_ = dataset[0].to(device)
         for start in starting_points:
+            input_ = dataset[start].to(device)
             for i in range(start, start+num_steps):
                 input_ = input_.to(device)
                 output = model.module(input_)
