@@ -547,7 +547,7 @@ def main():
 
 
 if __name__ == "__main__":
-    wandb.init(project="bba_gno")
+    wandb.init(project="bba_gno", entity="gene_gan_mdh")
     args = parse_args()
     wandb.config.update(args)
     main()
