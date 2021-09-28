@@ -534,14 +534,14 @@ def main():
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
                 latent_spaces = []
-                for inference_step in range(1000):
+                for inference_step in range(10000):
 
                     out, latent = model.module.forward(train_dataset[inference_step].cuda(), return_latent=True)
                     latent = latent.cpu().numpy().flatten()
                     latent_spaces.append(latent)
 
                 latent_spaces = np.array(latent_spaces)
-                color_dict = {'RMSD': dataset.rmsd_values[:1000]}
+                color_dict = {'RMSD': dataset.rmsd_values[:10000]}
                 out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
                 html_plot = wandb.Html(out_html['RMSD'], inject=False)
         else:
