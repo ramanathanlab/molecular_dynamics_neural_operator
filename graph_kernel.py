@@ -533,7 +533,7 @@ def main():
             video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
-                out, latent = model.module.forward(valid_dataset[0], return_latent=True)
+                out, latent = model.module.forward(valid_dataset[0].cuda(), return_latent=True)
                 latent = latent.cpu().numpy()
                 color_dict = {'RMSD': dataset.rmsd_values[:1]}
                 out_html = log_latent_visualization(latent, color_dict, 'latent_html/', epoch=epoch, method="raw")
