@@ -529,10 +529,10 @@ def main():
         avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
         avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
         video = None
-        if args.generate_movie and (epochs % args.plot_per_epochs == 0):
+        if args.generate_movie and (epoch % args.plot_per_epochs == 0):
             make_propagation_movie(model, valid_dataset, device, args.num_movie_frames)
             video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
-        if args.plot_latent and (epochs % args.plot_per_epochs == 0):
+        if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             pdb.set_trace()
         wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
                    'avg_train_mse': avg_train_mse, 'avg_valid_mse': avg_valid_mse,
