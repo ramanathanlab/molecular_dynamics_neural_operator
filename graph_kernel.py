@@ -416,10 +416,6 @@ def make_propagation_movie(model, dataset, device, num_steps=5, starting_points=
         images.append(imageio.imread(filename))
     imageio.mimsave('/tmp/gno_movie/movie.mp4', images)
 
-def html_latent_plot(model, dataset, device_num_steps):
-    """Generate plots of latent dimensions plotted against the rmsd to check model learning"""
-
-
 def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
     avg_loss = 0.0
@@ -496,6 +492,9 @@ def main():
         persistent_workers=args.persistent_workers,
     )
 
+    hundred_train_subset = Subset(train_dataset, np.arange(100))
+    hundred_rmsd = dataset.rmsd[:100]
+
     print("Split training and validation sets")
 
     # Setup device
@@ -536,10 +535,17 @@ def main():
             make_propagation_movie(model, valid_dataset, device, args.num_movie_frames)
             video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
-            pdb.set_trace()
+            with torch.no_grad():
+                out, latent = model.module.forward(hundred_train_subset, return_latent=True)
+                latent = latent.cpu().numpy()
+                color_dict = {'RMSD': hundred_rmsd}
+                out_html = log_latent_visualization(latent, color_dict, 'latent_html/', epoch=epoch, method="raw")
+                html_plot = wandb.Html(out_html['RMSD'], inject=False)
+        else:
+            html_plot = None
         wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
                    'avg_train_mse': avg_train_mse, 'avg_valid_mse': avg_valid_mse,
-                   'valid_prediction_video': video})
+                   'valid_prediction_video': video, 'RMSD_latent_plot': html_plot})
         scheduler.step()
         print(
             f"Epoch: {epoch}"
