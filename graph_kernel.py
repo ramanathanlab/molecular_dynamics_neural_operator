@@ -493,7 +493,7 @@ def main():
     )
 
     hundred_train_subset = Subset(train_dataset, np.arange(100))
-    hundred_rmsd = dataset.rmsd[:100]
+    hundred_rmsd = dataset.rmsd_values[:100]
 
     print("Split training and validation sets")
 
