@@ -283,7 +283,7 @@ class KernelNN(torch.nn.Module):
         for k in range(self.depth):
             x = F.relu(self.conv2(x, edge_index, edge_attr))
         if return_latent:
-            latent_dim = x
+            latent_dim = torch.clone(x)
         x = self.fc2(x)
         if return_latent:
             return [x, latent_dim]
@@ -534,6 +534,7 @@ def main():
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
                 out, latent = model.module.forward(valid_dataset[0].cuda(), return_latent=True)
+                pdb.set_trace()
                 latent = latent.cpu().numpy()
                 color_dict = {'AA': valid_dataset[0].x_aminoacid}
                 out_html = log_latent_visualization(latent, color_dict, '/tmp/latent_html/', epoch=epoch, method="raw")
