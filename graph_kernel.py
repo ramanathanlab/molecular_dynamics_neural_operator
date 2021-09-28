@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 from tqdm import tqdm
-from typing import Tuple
+from typing import Tuple, Optional
 from pathlib import Path
 from timeit import default_timer
 from collections import defaultdict
@@ -26,6 +26,8 @@ import imageio
 import pdb
 
 from dataset import ContactMapDataset, PairData
+
+from mdlearn.utils import log_latent_visualization
 
 EPS = 1e-15
 
@@ -264,7 +266,7 @@ class KernelNN(torch.nn.Module):
 
         self.fc2 = torch.nn.Linear(width, out_width)
 
-    def forward(self, data: PairData) -> torch.Tensor:
+    def forward(self, data: PairData, return_latent: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
@@ -280,8 +282,13 @@ class KernelNN(torch.nn.Module):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
         for k in range(self.depth):
             x = F.relu(self.conv2(x, edge_index, edge_attr))
+        if return_latent:
+            latent_dim = x
         x = self.fc2(x)
-        return x
+        if return_latent:
+            return [x, latent_dim]
+        else:
+            return x
 
 
 def parse_args():
@@ -310,6 +317,8 @@ def parse_args():
     parser.add_argument("--non_blocking", type=str, default="False")
     parser.add_argument("--generate_movie", type=bool, default=True)
     parser.add_argument("--num_movie_frames", type=int, default=5)
+    parser.add_argument("--plot_latent", type=bool, default=True)
+    parser.add_argument("--plot_per_epochs", type=int, default=1)
     args = parser.parse_args()
 
     # Validation of arguments
@@ -520,9 +529,11 @@ def main():
         avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
         avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
         video = None
-        if args.generate_movie:
+        if args.generate_movie and (epochs % args.plot_per_epochs == 0):
             make_propagation_movie(model, valid_dataset, device, args.num_movie_frames)
             video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
+        if args.plot_latent and (epochs % args.plot_per_epochs == 0):
+            pdb.set_trace()
         wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
                    'avg_train_mse': avg_train_mse, 'avg_valid_mse': avg_valid_mse,
                    'valid_prediction_video': video})
