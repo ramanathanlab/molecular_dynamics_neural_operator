@@ -115,6 +115,12 @@ class ContactMapDataset(Dataset):
             # COO formated ragged arrays
             self.edge_indices = np.array(f[edge_index_dset_name][:ntrain])
             self.edge_attrs = np.array(f[edge_attr_dset_name][:ntrain])
+            # get the rmsd nums
+            try:
+                self.rmsd_values = np.array(f['rmsd'])
+            except ValueError as e:
+                print("Not able to load rmsd values...")
+                self.rmsd_values = []
             if node_feature_dset_name is not None:
                 self._node_features_dset = f[node_feature_dset_name][...]
 

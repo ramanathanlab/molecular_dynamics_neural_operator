@@ -395,10 +395,10 @@ def get_contact_map(pair_data):
     return dense_contact_map
 
 
-def make_propagation_movie(model, dataset, device, num_steps):
-    forecast = recursive_propagation(model, dataset, device, num_steps=5, starting_points=[0, 25, 50])
+def make_propagation_movie(model, dataset, device, num_steps=5, starting_points=[0, 25, 50]):
+    forecast = recursive_propagation(model, dataset, device, num_steps=num_steps, starting_points=starting_points)
     filenames = []
-    for starting_point in [0, 25, 50]:
+    for starting_point in starting_points:
         for i in range(starting_point, starting_point+num_steps):
             forecast_cm = get_contact_map(forecast.pop(0))
             real_cm = get_contact_map(dataset[i + 1])
@@ -415,6 +415,9 @@ def make_propagation_movie(model, dataset, device, num_steps):
     for filename in filenames:
         images.append(imageio.imread(filename))
     imageio.mimsave('/tmp/gno_movie/movie.mp4', images)
+
+def html_latent_plot(model, dataset, device_num_steps):
+    """Generate plots of latent dimensions plotted against the rmsd to check model learning"""
 
 
 def train(model, train_loader, optimizer, loss_fn, device):
