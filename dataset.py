@@ -117,7 +117,7 @@ class ContactMapDataset(Dataset):
             self.edge_attrs = np.array(f[edge_attr_dset_name][:ntrain])
             # get the rmsd nums
             try:
-                self.rmsd_values = np.array(f['rmsd'])
+                self.rmsd_values = np.array(f['rmsd'][:ntrain])
             except ValueError as e:
                 print("Not able to load rmsd values...")
                 self.rmsd_values = []
