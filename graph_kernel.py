@@ -533,12 +533,17 @@ def main():
             video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
-                out, latent = model.module.forward(valid_dataset[0].cuda(), return_latent=True)
-                pdb.set_trace()
-                latent = latent.cpu().numpy()
-                color_dict = {'AA': valid_dataset[0].x_aminoacid}
-                out_html = log_latent_visualization(latent, color_dict, '/tmp/latent_html/', epoch=epoch, method="raw")
-                html_plot = wandb.Html(out_html['AA'], inject=False)
+                latent_spaces = []
+                for inference_step in range(1000):
+
+                    out, latent = model.module.forward(valid_dataset[inference_step].cuda(), return_latent=True)
+                    latent = latent.cpu().numpy()[0, :3]
+                    latent_spaces.append(latent)
+
+                latent_spaces = np.array(latent_spaces)
+                color_dict = {'RMSD': dataset.rmsd_values[:1000]}
+                out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="raw")
+                html_plot = wandb.Html(out_html['RMSD'], inject=False)
         else:
             html_plot = None
         wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
