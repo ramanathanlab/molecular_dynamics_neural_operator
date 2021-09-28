@@ -492,9 +492,6 @@ def main():
         persistent_workers=args.persistent_workers,
     )
 
-    hundred_train_subset = Subset(train_dataset, np.arange(100))
-    hundred_rmsd = dataset.rmsd_values[:100]
-
     print("Split training and validation sets")
 
     # Setup device
@@ -536,11 +533,13 @@ def main():
             video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
-                out, latent = model.module.forward(hundred_train_subset, return_latent=True)
-                latent = latent.cpu().numpy()
-                color_dict = {'RMSD': hundred_rmsd}
-                out_html = log_latent_visualization(latent, color_dict, 'latent_html/', epoch=epoch, method="raw")
-                html_plot = wandb.Html(out_html['RMSD'], inject=False)
+                for batch in train_loader:
+                    out, latent = model.module.forward(batch, return_latent=True)
+                    latent = latent.cpu().numpy()
+                    color_dict = {'RMSD': dataset.rmsd_values[:args.batch_size]}
+                    out_html = log_latent_visualization(latent, color_dict, 'latent_html/', epoch=epoch, method="raw")
+                    html_plot = wandb.Html(out_html['RMSD'], inject=False)
+                    break
         else:
             html_plot = None
         wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
