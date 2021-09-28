@@ -535,9 +535,9 @@ def main():
             with torch.no_grad():
                 out, latent = model.module.forward(valid_dataset[0].cuda(), return_latent=True)
                 latent = latent.cpu().numpy()
-                color_dict = {'RMSD': dataset.rmsd_values[:1]}
+                color_dict = {'AA': valid_dataset[0].x_aminoacid}
                 out_html = log_latent_visualization(latent, color_dict, 'latent_html/', epoch=epoch, method="raw")
-                html_plot = wandb.Html(out_html['RMSD'], inject=False)
+                html_plot = wandb.Html(out_html['AA'], inject=False)
         else:
             html_plot = None
         wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
