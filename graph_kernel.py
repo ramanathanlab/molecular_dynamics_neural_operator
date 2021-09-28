@@ -536,13 +536,13 @@ def main():
                 latent_spaces = []
                 for inference_step in range(1000):
 
-                    out, latent = model.module.forward(valid_dataset[inference_step].cuda(), return_latent=True)
-                    latent = latent.cpu().numpy()[0, :3]
+                    out, latent = model.module.forward(train_dataset[inference_step].cuda(), return_latent=True)
+                    latent = latent.cpu().numpy().flatten()
                     latent_spaces.append(latent)
 
                 latent_spaces = np.array(latent_spaces)
                 color_dict = {'RMSD': dataset.rmsd_values[:1000]}
-                out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="raw")
+                out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
                 html_plot = wandb.Html(out_html['RMSD'], inject=False)
         else:
             html_plot = None
