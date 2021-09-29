@@ -250,7 +250,7 @@ class KernelNN(torch.nn.Module):
             out_width: int = 1,
             num_embeddings: int = 20,
             embedding_dim: int = 4,
-            x_position_dim: int = 3
+            x_position_dim: int = 4
     ) -> None:
         super(KernelNN, self).__init__()
         self.depth = depth
@@ -274,9 +274,8 @@ class KernelNN(torch.nn.Module):
     def forward(self, data: PairData, return_latent: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
         # process the window of previous frames
-        hidden = (torch.randn(1, 1, 3),
-                  torch.randn(1, 1, 3))
-        pdb.set_trace()
+        hidden = (torch.randn(1, 1, 1, 3),
+                  torch.randn(1, 1, 1, 3))
         for i in data.x_position:
             x, hidden = self.lstm(i, hidden)
         x = self.lstm_fc(x)
