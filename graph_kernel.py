@@ -351,8 +351,8 @@ def parse_args():
     return args
 
 
-def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairData:
-    contact_map = (distance_matrix(x_position, x_position) < threshold).astype("int8")
+def construct_pairdata(x_position, x_aminoacid, previous_x_positions, threshold: float = 8.0) -> PairData:
+    contact_map = (distance_matrix(x_position[-1], x_position[-1]) < threshold).astype("int8")
     sparse_contact_map = coo_matrix(contact_map)
     # print(sparse_contact_map.row)
     # print(sparse_contact_map.col)
@@ -364,7 +364,7 @@ def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairD
     edge_attr = np.array(
         [
             np.concatenate(
-                (x_position[i, :], x_position[j, :])
+                (x_position[-1, i, :], x_position[-1, j, :])
             ).flatten()
             for i, j in zip(edge_index[0], edge_index[1])
         ]
@@ -397,8 +397,11 @@ def recursive_propagation(model, dataset, device, num_steps: int, starting_point
                 output = model.module(input_, single_example=True)
                 # calc_mse = mse(output, dataset[i+1].x_position)
                 # metrics["mse"].append(calc_mse)
-                x_position = output.detach().cpu().numpy()
-                input_ = construct_pairdata(x_position, input_.x_aminoacid, threshold=threshold)
+                # new x_position
+                last_window = input_.x_position.cpu().numpy()[1:, :, :]
+                out_x_position = output.detach().cpu().numpy()
+                new_x_position = np.vstack(last_window, out_x_position)
+                input_ = construct_pairdata(new_x_position, input_.x_aminoacid, threshold=threshold)
                 forecasts.append(input_.to("cpu"))
 
     return forecasts
