@@ -288,7 +288,7 @@ class KernelNN(torch.nn.Module):
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
-        emb = self.emb(data.x_feature)
+        emb = self.emb(data.x_feature.flatten())
         x = x.reshape(emb.shape[0], -1)
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
