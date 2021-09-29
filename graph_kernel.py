@@ -250,7 +250,7 @@ class KernelNN(torch.nn.Module):
             out_width: int = 1,
             num_embeddings: int = 20,
             embedding_dim: int = 4,
-            x_position_dim: int = 4
+            x_position_dim: int = 3
     ) -> None:
         super(KernelNN, self).__init__()
         self.depth = depth
@@ -258,7 +258,7 @@ class KernelNN(torch.nn.Module):
         self.embedding_dim = embedding_dim
         self.x_position_dim = x_position_dim
 
-        self.lstm = nn.LSTM(x_position_dim, x_position_dim)
+        self.lstm = nn.LSTM(x_position_dim, embedding_dim)
         self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
 
         self.emb = nn.Embedding(num_embeddings, embedding_dim)
