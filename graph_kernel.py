@@ -274,7 +274,7 @@ class KernelNN(torch.nn.Module):
     def forward(self, data: PairData, return_latent: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
         # process the window of previous frames
-        x = self.lstm(data.x_position)
+        x, hidden = self.lstm(data.x_position)
         x = self.lstm_fc(x)
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
