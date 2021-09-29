@@ -177,8 +177,8 @@ class ContactMapDataset(Dataset):
 
         # get the weighted node degree features
         torch_edge_index = torch.from_numpy(edge_index[0]).long()
-        degree_weights = degree(torch_edge_index).long()
-        x_feature = torch.vstack([self.x_aminoacid, degree_weights])
+        degree_weights = degree(torch_edge_index)
+        x_feature = torch.vstack([self.x_aminoacid, degree_weights]).long()
 
         # Convert to torch.Tensor
         x_position = torch.from_numpy(x_position).to(torch.float32)
