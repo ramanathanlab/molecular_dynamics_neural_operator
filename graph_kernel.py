@@ -271,9 +271,12 @@ class KernelNN(torch.nn.Module):
 
         self.fc2 = torch.nn.Linear(width, out_width)
 
-    def forward(self, data: PairData, return_latent: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
+    def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
-        x = data.x_position.reshape(-1, 10, 28, 3)
+        if single_example:
+            data.x_position.reshape(1, 10, 28, 3)
+        else:
+            x = data.x_position.reshape(args.batch_size, 10, 28, 3)
         x = torch.swapaxes(x, 0, 1)
         # process the window of previous frames
         hidden = (torch.randn(1, 28, 3).cuda(),
@@ -390,7 +393,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, starting_point
             input_ = dataset[start].to(device)
             for i in range(start, start+num_steps):
                 input_ = input_.to(device)
-                output = model.module(input_)
+                output = model.module(input_, single_example=True)
                 # calc_mse = mse(output, dataset[i+1].x_position)
                 # metrics["mse"].append(calc_mse)
                 x_position = output.detach().cpu().numpy()
@@ -549,7 +552,7 @@ def main():
                 latent_spaces = []
                 for inference_step in range(10000):
 
-                    out, latent = model.module.forward(train_dataset[inference_step+133000].cuda(), return_latent=True)
+                    out, latent = model.module.forward(train_dataset[inference_step+133000].cuda(), return_latent=True, single_example=True)
                     latent = latent.cpu().numpy().flatten()
                     latent_spaces.append(latent)
 
