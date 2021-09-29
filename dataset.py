@@ -31,7 +31,7 @@ class PairData(Data):
         edge_index: OptTensor = None,
     ) -> None:
         super().__init__()
-        self.x_aminoacid = x_aminoacid
+        self.x_feature = x_feature
         self.x_position = x_position
         self.y = y
         self.edge_attr = edge_attr
@@ -176,8 +176,9 @@ class ContactMapDataset(Dataset):
         y = self.edge_attrs[pred_idx]
 
         # get the weighted node degree features
-        degree_weights = 1/(degree(edge_index[0]))
-        x_feature = np.vstack([self.x_aminoacid, degree_weights])
+        torch_edge_index = torch.from_numpy(edge_index[0]).long()
+        degree_weights = 1/(degree(torch_edge_index))
+        x_feature = torch.vstack([self.x_aminoacid, degree_weights])
         x_feature = torch.from_numpy(x_feature)
 
         # Convert to torch.Tensor
@@ -194,7 +195,7 @@ class ContactMapDataset(Dataset):
 
         # Construct torch_geometric data object
         data = PairData(
-            x_aminoacid=x_feature,
+            x_feature=x_feature,
             x_position=x_position,
             y=y,
             edge_attr=edge_attr,

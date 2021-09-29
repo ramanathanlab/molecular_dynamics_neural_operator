@@ -374,10 +374,10 @@ def construct_pairdata(x_position, x_feature, threshold: float = 8.0) -> PairDat
     )
 
     # generate new x feature
-    aminoacid = x_feature[0].cpu().numpy()
-    degree_weight = 1/degree(edge_index[0])
-    new_x_feature = np.vstack([aminoacid, degree_weight])
-    new_x_feature = torch.from_numpy(new_x_feature)
+    aminoacid = x_feature[0]
+    torch_edge_index = torch.from_numpy(edge_index[0]).long()
+    degree_weight = 1/degree(torch_edge_index)
+    new_x_feature = torch.vstack([aminoacid, degree_weight])
 
 
     x_position = torch.from_numpy(x_position).to(torch.float32)
