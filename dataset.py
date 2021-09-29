@@ -150,12 +150,10 @@ class ContactMapDataset(Dataset):
 
     def __getitem__(self, idx):
 
-        pdb.set_trace()
-
         pred_idx = idx + self.window_size + self.horizon - 1
 
         # Get the positions (num_nodes, 3)
-        x_position = self.edge_attrs[idx:idx+self.window_size]
+        x_position = self.edge_attrs[idx:idx+self.window_size].reshape(-1, 3)
 
         # Get adjacency list
         edge_index = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]
