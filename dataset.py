@@ -186,7 +186,7 @@ class ContactMapDataset(Dataset):
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
         y = torch.from_numpy(y).to(torch.float32)
 
-        print("x_aminoacid:", x_feature.shape)
+        # print("x_aminoacid:", x_feature.shape)
         #print("x_position:", x_position.shape)
         #print("edge_index:", edge_index.shape)
         #print("edge_attr:", edge_attr.shape)
