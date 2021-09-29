@@ -179,7 +179,6 @@ class ContactMapDataset(Dataset):
         torch_edge_index = torch.from_numpy(edge_index[0]).long()
         degree_weights = 1/(degree(torch_edge_index))
         x_feature = torch.vstack([self.x_aminoacid, degree_weights])
-        x_feature = torch.from_numpy(x_feature)
 
         # Convert to torch.Tensor
         x_position = torch.from_numpy(x_position).to(torch.float32)
