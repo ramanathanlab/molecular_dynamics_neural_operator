@@ -278,6 +278,7 @@ class KernelNN(torch.nn.Module):
         hidden = (torch.randn(1, 28, 3).cuda(),
                   torch.randn(1, 28, 3).cuda())
         for i in x:
+            print("lstm x shape", x.shape)
             x, hidden = self.lstm(i, hidden)
         x = self.lstm_fc(x)
         x = x.reshape(-1, 3)
