@@ -399,7 +399,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, starting_point
                 # new x_position
                 last_window = input_.x_position.cpu().numpy()[1:, :, :]
                 out_x_position = output.detach().cpu().numpy()
-                new_x_position = np.vstack(last_window, out_x_position)
+                new_x_position = np.vstack([last_window, out_x_position])
                 input_ = construct_pairdata(new_x_position, input_.x_aminoacid, threshold=threshold)
                 forecasts.append(input_.to("cpu"))
 
