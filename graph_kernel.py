@@ -273,11 +273,12 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data: PairData, return_latent: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
-        pdb.set_trace()
+        x = data.x_position.reshape(-1, 10, 28, 3)
+        x = torch.swapaxes(x, 0, 1)
         # process the window of previous frames
-        hidden = (torch.randn(1, 1, 3),
-                  torch.randn(1, 1, 3))
-        for i in data.x_position:
+        hidden = (torch.randn(1, 28, 3).cuda(),
+                  torch.randn(1, 28, 3).cuda())
+        for i in x:
             x, hidden = self.lstm(i, hidden)
         x = self.lstm_fc(x)
         # Use an embedding layer to map the onehot aminoacid vector to
