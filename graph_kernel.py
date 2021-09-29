@@ -351,7 +351,7 @@ def parse_args():
     return args
 
 
-def construct_pairdata(x_position, x_aminoacid, previous_x_positions, threshold: float = 8.0) -> PairData:
+def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairData:
     contact_map = (distance_matrix(x_position[-1], x_position[-1]) < threshold).astype("int8")
     sparse_contact_map = coo_matrix(contact_map)
     # print(sparse_contact_map.row)
