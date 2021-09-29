@@ -101,9 +101,6 @@ class ContactMapDataset(Dataset):
             than the input data.
         """
 
-        if window_size > 1:
-            raise ValueError("Currently supports a max window_size of 1")
-
         self._constant_num_node_features = constant_num_node_features
         self.window_size = window_size
         self.horizon = horizon
