@@ -288,6 +288,7 @@ class KernelNN(torch.nn.Module):
         emb = self.emb(data.x_aminoacid)
         print("emb:", emb.shape)
         print("x", x.shape)
+        x = x.reshape(emb.shape[0], -1)
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
         x = torch.cat((emb, x), dim=1)
