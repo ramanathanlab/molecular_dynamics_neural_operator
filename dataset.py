@@ -48,7 +48,7 @@ class PairData(Data):
             return super().__inc__(key, value, *args, **kwargs)
 
     def pin_memory(self):
-        self.x_aminoacid = self.x_aminoacid.pin_memory()
+        self.x_feature= self.x_feature.pin_memory()
         self.x_position = self.x_position.pin_memory()
         self.y = self.y.pin_memory()
         self.edge_attr = self.edge_attr.pin_memory()
