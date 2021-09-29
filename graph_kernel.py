@@ -247,8 +247,8 @@ class KernelNN(torch.nn.Module):
             ker_width: int,
             depth: int,
             ker_in: int,
-            in_width: int = 1,
-            out_width: int = 1,
+            in_width: int = 2,
+            out_width: int = 2,
             num_embeddings: int = 20,
             embedding_dim: int = 4,
             x_position_dim: int = 3
