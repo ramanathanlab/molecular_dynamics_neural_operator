@@ -276,7 +276,7 @@ class KernelNN(torch.nn.Module):
         if single_example:
             data.x_position.reshape(1, 10, 28, 3)
         else:
-            x = data.x_position.reshape(args.batch_size, 10, 28, 3)
+            x = data.x_position.reshape(-1, 10, 28, 3)
         x = torch.swapaxes(x, 0, 1)
         # process the window of previous frames
         hidden = (torch.randn(1, 28, 3).cuda(),
