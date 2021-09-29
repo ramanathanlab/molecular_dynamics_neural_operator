@@ -156,7 +156,7 @@ class ContactMapDataset(Dataset):
         pred_idx = idx + self.window_size + self.horizon - 1
 
         # Get the positions (num_nodes, 3)
-        x_position = self.edge_attrs[idx]
+        x_position = self.edge_attrs[idx:idx+self.window_size]
 
         # Get adjacency list
         edge_index = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]

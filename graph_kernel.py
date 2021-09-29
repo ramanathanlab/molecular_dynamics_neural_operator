@@ -250,11 +250,16 @@ class KernelNN(torch.nn.Module):
             out_width: int = 1,
             num_embeddings: int = 20,
             embedding_dim: int = 4,
+            x_position_dim: int = 3
     ) -> None:
         super(KernelNN, self).__init__()
         self.depth = depth
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
+        self.x_position_dim = x_position_dim
+
+        self.lstm = nn.LSTM(x_position_dim, x_position_dim)
+        self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
 
         self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
@@ -268,6 +273,9 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data: PairData, return_latent: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
+        # process the window of previous frames
+        x = self.lstm(data.x_position)
+        x = self.lstm_fc(x)
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
@@ -275,7 +283,7 @@ class KernelNN(torch.nn.Module):
         # print("emb:", emb.shape)
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
-        x = torch.cat((emb, data.x_position), dim=1)
+        x = torch.cat((emb, x), dim=1)
         # print("x:", x.shape)
         x = F.relu(self.fc1(x))
         for k in range(self.depth):
@@ -475,7 +483,7 @@ def main():
     torch.set_num_threads(1 if args.num_data_workers == 0 else args.num_data_workers)
 
     # Setup training and validation datasets
-    dataset = ContactMapDataset(args.data_path)
+    dataset = ContactMapDataset(args.data_path, window_size=10)
 
     print("Created dataset")
 
