@@ -19,6 +19,7 @@ from torch_geometric.loader import DataListLoader
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
 from torch_geometric.nn import DataParallel
+from torch_geometric.utils import degree
 
 import wandb
 import os
@@ -287,7 +288,7 @@ class KernelNN(torch.nn.Module):
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
-        emb = self.emb(data.x_aminoacid)
+        emb = self.emb(data.x_feature)
         x = x.reshape(emb.shape[0], -1)
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
@@ -353,7 +354,7 @@ def parse_args():
     return args
 
 
-def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairData:
+def construct_pairdata(x_position, x_feature, threshold: float = 8.0) -> PairData:
     contact_map = (distance_matrix(x_position[-1], x_position[-1]) < threshold).astype("int8")
     sparse_contact_map = coo_matrix(contact_map)
     # print(sparse_contact_map.row)
@@ -372,13 +373,20 @@ def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairD
         ]
     )
 
+    # generate new x feature
+    aminoacid = x_feature[0].cpu().numpy()
+    degree_weight = 1/degree(edge_index[0])
+    new_x_feature = np.vstack([aminoacid, degree_weight])
+    new_x_feature = torch.from_numpy(new_x_feature)
+
+
     x_position = torch.from_numpy(x_position).to(torch.float32)
     edge_index = torch.from_numpy(edge_index).to(torch.long)
     edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
 
     # Construct torch_geometric data object
     data = PairData(
-        x_aminoacid=x_aminoacid,
+        x_feature=new_x_feature,
         x_position=x_position,
         edge_attr=edge_attr,
         edge_index=edge_index,
@@ -401,7 +409,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, starting_point
                 out_x_position = output.detach().cpu().numpy()
                 out_x_position = np.expand_dims(out_x_position, 0)
                 new_x_position = np.vstack([last_window, out_x_position])
-                input_ = construct_pairdata(new_x_position, input_.x_aminoacid, threshold=threshold)
+                input_ = construct_pairdata(new_x_position, input_.x_feature, threshold=threshold)
                 forecasts.append(input_.to("cpu"))
 
     return forecasts

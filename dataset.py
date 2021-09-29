@@ -6,6 +6,7 @@ from typing import Union, Optional
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 from torch_geometric.typing import OptTensor
+from torch_geometric.utils import degree
 import pdb
 
 PathLike = Union[str, Path]
@@ -23,7 +24,7 @@ def aminoacid_int_to_onehot(labels):
 class PairData(Data):
     def __init__(
         self,
-        x_aminoacid: OptTensor = None,
+        x_feature: OptTensor = None,
         x_position: OptTensor = None,
         y: OptTensor = None,
         edge_attr: OptTensor = None,
@@ -156,8 +157,6 @@ class ContactMapDataset(Dataset):
         x_position = self.edge_attrs[idx:idx+self.window_size]
         # x_position = self.edge_attrs[idx]
 
-
-
         # Get adjacency list
         edge_index = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]
 
@@ -176,7 +175,10 @@ class ContactMapDataset(Dataset):
         # Get the raw xyz positions (num_nodes, 3) at the prediction index
         y = self.edge_attrs[pred_idx]
 
-        pdb.set_trace()
+        # get the weighted node degree features
+        degree_weights = 1/(degree(edge_index[0]))
+        x_feature = np.vstack([self.x_aminoacid, degree_weights])
+        x_feature = torch.from_numpy(x_feature)
 
         # Convert to torch.Tensor
         x_position = torch.from_numpy(x_position).to(torch.float32)
@@ -184,7 +186,7 @@ class ContactMapDataset(Dataset):
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
         y = torch.from_numpy(y).to(torch.float32)
 
-        #print("x_aminoacid:", self.x_aminoacid.shape)
+        print("x_aminoacid:", x_feature.shape)
         #print("x_position:", x_position.shape)
         #print("edge_index:", edge_index.shape)
         #print("edge_attr:", edge_attr.shape)
@@ -192,7 +194,7 @@ class ContactMapDataset(Dataset):
 
         # Construct torch_geometric data object
         data = PairData(
-            x_aminoacid=self.x_aminoacid,
+            x_aminoacid=x_feature,
             x_position=x_position,
             y=y,
             edge_attr=edge_attr,
