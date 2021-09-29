@@ -274,7 +274,7 @@ class KernelNN(torch.nn.Module):
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
         if single_example:
-            data.x_position.reshape(1, 10, 28, 3)
+            x = data.x_position.reshape(1, 10, 28, 3)
         else:
             x = data.x_position.reshape(-1, 10, 28, 3)
         x = torch.swapaxes(x, 0, 1)
