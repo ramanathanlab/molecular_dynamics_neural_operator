@@ -156,6 +156,8 @@ class ContactMapDataset(Dataset):
         x_position = self.edge_attrs[idx:idx+self.window_size]
         # x_position = self.edge_attrs[idx]
 
+        pdb.set_trace()
+
         # Get adjacency list
         edge_index = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]
 

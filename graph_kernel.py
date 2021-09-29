@@ -335,6 +335,8 @@ def parse_args():
     parser.add_argument("--num_movie_frames", type=int, default=5)
     parser.add_argument("--plot_latent", type=bool, default=True)
     parser.add_argument("--plot_per_epochs", type=int, default=1)
+    parser.add_argument("--window_size", type=int, default=10, help="Size of window to feed into network")
+
     args = parser.parse_args()
 
     # Validation of arguments
@@ -394,9 +396,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, starting_point
             for i in range(start, start+num_steps):
                 input_ = input_.to(device)
                 output = model.module(input_, single_example=True)
-                # calc_mse = mse(output, dataset[i+1].x_position)
-                # metrics["mse"].append(calc_mse)
-                # new x_position
+                # generate new x positions
                 last_window = input_.x_position.cpu().numpy()[1:, :, :]
                 out_x_position = output.detach().cpu().numpy()
                 out_x_position = np.expand_dims(out_x_position, 0)
@@ -495,7 +495,7 @@ def main():
     torch.set_num_threads(1 if args.num_data_workers == 0 else args.num_data_workers)
 
     # Setup training and validation datasets
-    dataset = ContactMapDataset(args.data_path, window_size=10)
+    dataset = ContactMapDataset(args.data_path, window_size=args.window_size)
 
     print("Created dataset")
 
