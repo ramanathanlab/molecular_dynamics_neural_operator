@@ -259,7 +259,7 @@ class KernelNN(torch.nn.Module):
         self.x_position_dim = x_position_dim
 
         self.lstm = nn.LSTM(x_position_dim, x_position_dim)
-        self.lstm_fc = torch.nn.Linear(x_position_dim, 2)
+        self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
 
         self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
@@ -280,6 +280,7 @@ class KernelNN(torch.nn.Module):
         for i in x:
             x, hidden = self.lstm(i, hidden)
         x = self.lstm_fc(x)
+        x = x.reshape(-1, 3)
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
