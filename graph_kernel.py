@@ -323,7 +323,7 @@ def parse_args():
     parser.add_argument("--out_width", type=int, default=3)
     parser.add_argument("--kernel_width", type=int, default=1024)
     parser.add_argument("--depth", type=int, default=6)
-    parser.add_argument("--node_features", type=int, default=7)
+    parser.add_argument("--node_features", type=int, default=8)
     parser.add_argument("--edge_features", type=int, default=6)
     parser.add_argument("--num_embeddings", type=int, default=20)
     parser.add_argument("--embedding_dim", type=int, default=4)
