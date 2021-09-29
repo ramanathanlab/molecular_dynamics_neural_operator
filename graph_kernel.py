@@ -276,8 +276,8 @@ class KernelNN(torch.nn.Module):
         x = data.x_position.reshape(-1, 10, 28, 3)
         x = torch.swapaxes(x, 0, 1)
         # process the window of previous frames
-        hidden = (torch.randn(args.batch_size, 28, 3).cuda(),
-                  torch.randn(args.batch_size, 28, 3).cuda())
+        hidden = (torch.randn(1, 28, 3).cuda(),
+                  torch.randn(1, 28, 3).cuda())
         for i in x:
             print("lstm x shape", x.shape)
             x, hidden = self.lstm(i, hidden)
