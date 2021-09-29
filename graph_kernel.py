@@ -276,6 +276,7 @@ class KernelNN(torch.nn.Module):
         # process the window of previous frames
         hidden = (torch.randn(1, 1, 3),
                   torch.randn(1, 1, 3))
+        pdb.set_trace()
         for i in data.x_position:
             x, hidden = self.lstm(i, hidden)
         x = self.lstm_fc(x)
