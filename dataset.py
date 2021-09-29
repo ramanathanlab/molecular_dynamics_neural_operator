@@ -156,7 +156,7 @@ class ContactMapDataset(Dataset):
         x_position = self.edge_attrs[idx:idx+self.window_size]
         # x_position = self.edge_attrs[idx]
 
-        pdb.set_trace()
+
 
         # Get adjacency list
         edge_index = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]
@@ -175,6 +175,8 @@ class ContactMapDataset(Dataset):
 
         # Get the raw xyz positions (num_nodes, 3) at the prediction index
         y = self.edge_attrs[pred_idx]
+
+        pdb.set_trace()
 
         # Convert to torch.Tensor
         x_position = torch.from_numpy(x_position).to(torch.float32)
