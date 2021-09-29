@@ -273,6 +273,7 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data: PairData, return_latent: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
+        pdb.set_trace()
         # process the window of previous frames
         hidden = (torch.randn(1, 1, 3),
                   torch.randn(1, 1, 3))
