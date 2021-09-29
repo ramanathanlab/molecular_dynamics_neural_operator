@@ -6,7 +6,7 @@ from typing import Union, Optional
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 from torch_geometric.typing import OptTensor
-
+import pdb
 
 PathLike = Union[str, Path]
 
@@ -149,6 +149,8 @@ class ContactMapDataset(Dataset):
         return len(self.edge_indices) - self.window_size - self.horizon + 1
 
     def __getitem__(self, idx):
+
+        pdb.set_trace()
 
         pred_idx = idx + self.window_size + self.horizon - 1
 
