@@ -278,17 +278,13 @@ class KernelNN(torch.nn.Module):
         # process the window of previous frames
         hidden = (torch.randn(1, 28, 3).cuda(),
                   torch.randn(1, 28, 3).cuda())
-        pdb.set_trace()
         for i in x:
-            print("lstm x shape", x.shape)
             x, hidden = self.lstm(i, hidden)
         x = self.lstm_fc(x)
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
         emb = self.emb(data.x_aminoacid)
-        print("emb:", emb.shape)
-        print("x", x.shape)
         x = x.reshape(emb.shape[0], -1)
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
