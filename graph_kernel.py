@@ -386,7 +386,6 @@ def construct_pairdata(x_position, x_aminoacid, previous_x_positions, threshold:
 
 
 def recursive_propagation(model, dataset, device, num_steps: int, starting_points: list, threshold: float = 8.0):
-    pdb.set_trace()
     forecasts = []
     model.eval()
     with torch.no_grad():
