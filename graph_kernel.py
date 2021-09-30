@@ -19,7 +19,6 @@ from torch_geometric.loader import DataListLoader
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.nn.inits import reset, uniform
 from torch_geometric.nn import DataParallel
-from torch_geometric.utils import degree
 
 import wandb
 import os
@@ -247,9 +246,9 @@ class KernelNN(torch.nn.Module):
             ker_width: int,
             depth: int,
             ker_in: int,
-            in_width: int = 2,
-            out_width: int = 2,
-            num_embeddings: int = 21,
+            in_width: int = 1,
+            out_width: int = 1,
+            num_embeddings: int = 20,
             embedding_dim: int = 4,
             x_position_dim: int = 3
     ) -> None:
@@ -288,8 +287,7 @@ class KernelNN(torch.nn.Module):
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
-
-        emb = self.emb(data.x_feature)
+        emb = self.emb(data.x_aminoacid)
         x = x.reshape(emb.shape[0], -1)
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
@@ -324,9 +322,9 @@ def parse_args():
     parser.add_argument("--out_width", type=int, default=3)
     parser.add_argument("--kernel_width", type=int, default=1024)
     parser.add_argument("--depth", type=int, default=6)
-    parser.add_argument("--node_features", type=int, default=8)
+    parser.add_argument("--node_features", type=int, default=7)
     parser.add_argument("--edge_features", type=int, default=6)
-    parser.add_argument("--num_embeddings", type=int, default=21)
+    parser.add_argument("--num_embeddings", type=int, default=20)
     parser.add_argument("--embedding_dim", type=int, default=4)
     parser.add_argument("--split_pct", type=float, default=0.8)
     parser.add_argument("--num_data_workers", type=int, default=0)
@@ -355,7 +353,7 @@ def parse_args():
     return args
 
 
-def construct_pairdata(x_position, x_feature, threshold: float = 8.0) -> PairData:
+def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairData:
     contact_map = (distance_matrix(x_position[-1], x_position[-1]) < threshold).astype("int8")
     sparse_contact_map = coo_matrix(contact_map)
     # print(sparse_contact_map.row)
@@ -374,20 +372,13 @@ def construct_pairdata(x_position, x_feature, threshold: float = 8.0) -> PairDat
         ]
     )
 
-    # generate new x feature
-    aminoacid = x_feature[0]
-    torch_edge_index = torch.from_numpy(edge_index[0]).long()
-    degree_weight = 1/degree(torch_edge_index)
-    new_x_feature = torch.vstack([aminoacid, degree_weight])
-
-
     x_position = torch.from_numpy(x_position).to(torch.float32)
     edge_index = torch.from_numpy(edge_index).to(torch.long)
     edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
 
     # Construct torch_geometric data object
     data = PairData(
-        x_feature=new_x_feature,
+        x_aminoacid=x_aminoacid,
         x_position=x_position,
         edge_attr=edge_attr,
         edge_index=edge_index,
@@ -410,7 +401,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, starting_point
                 out_x_position = output.detach().cpu().numpy()
                 out_x_position = np.expand_dims(out_x_position, 0)
                 new_x_position = np.vstack([last_window, out_x_position])
-                input_ = construct_pairdata(new_x_position, input_.x_feature, threshold=threshold)
+                input_ = construct_pairdata(new_x_position, input_.x_aminoacid, threshold=threshold)
                 forecasts.append(input_.to("cpu"))
 
     return forecasts

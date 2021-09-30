@@ -6,7 +6,6 @@ from typing import Union, Optional
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 from torch_geometric.typing import OptTensor
-from torch_geometric.utils import degree
 import pdb
 
 PathLike = Union[str, Path]
@@ -24,14 +23,14 @@ def aminoacid_int_to_onehot(labels):
 class PairData(Data):
     def __init__(
         self,
-        x_feature: OptTensor = None,
+        x_aminoacid: OptTensor = None,
         x_position: OptTensor = None,
         y: OptTensor = None,
         edge_attr: OptTensor = None,
         edge_index: OptTensor = None,
     ) -> None:
         super().__init__()
-        self.x_feature = x_feature
+        self.x_aminoacid = x_aminoacid
         self.x_position = x_position
         self.y = y
         self.edge_attr = edge_attr
@@ -48,7 +47,7 @@ class PairData(Data):
             return super().__inc__(key, value, *args, **kwargs)
 
     def pin_memory(self):
-        self.x_feature= self.x_feature.pin_memory()
+        self.x_aminoacid = self.x_aminoacid.pin_memory()
         self.x_position = self.x_position.pin_memory()
         self.y = self.y.pin_memory()
         self.edge_attr = self.edge_attr.pin_memory()
@@ -157,6 +156,8 @@ class ContactMapDataset(Dataset):
         x_position = self.edge_attrs[idx:idx+self.window_size]
         # x_position = self.edge_attrs[idx]
 
+        pdb.set_trace()
+
         # Get adjacency list
         edge_index = self.edge_indices[idx].reshape(2, -1)  # [2, num_edges]
 
@@ -175,18 +176,13 @@ class ContactMapDataset(Dataset):
         # Get the raw xyz positions (num_nodes, 3) at the prediction index
         y = self.edge_attrs[pred_idx]
 
-        # get the weighted node degree features
-        torch_edge_index = torch.from_numpy(edge_index[0]).long()
-        degree_weights = degree(torch_edge_index)
-        x_feature = torch.vstack([self.x_aminoacid, degree_weights]).long()
-
         # Convert to torch.Tensor
         x_position = torch.from_numpy(x_position).to(torch.float32)
         edge_index = torch.from_numpy(edge_index).to(torch.long)
         edge_attr = torch.from_numpy(edge_attr).to(torch.float32)
         y = torch.from_numpy(y).to(torch.float32)
 
-        # print("x_aminoacid:", x_feature.shape)
+        #print("x_aminoacid:", self.x_aminoacid.shape)
         #print("x_position:", x_position.shape)
         #print("edge_index:", edge_index.shape)
         #print("edge_attr:", edge_attr.shape)
@@ -194,7 +190,7 @@ class ContactMapDataset(Dataset):
 
         # Construct torch_geometric data object
         data = PairData(
-            x_feature=x_feature,
+            x_aminoacid=self.x_aminoacid,
             x_position=x_position,
             y=y,
             edge_attr=edge_attr,
