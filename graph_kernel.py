@@ -274,7 +274,10 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
-        x = data.x_position.reshape(-1, 10, 28, 3)
+        if single_example:
+            x = data.x_position.reshape(1, 10, 28, 3)
+        else:
+            x = data.x_position.reshape(-1, 10, 28, 3)
         x = torch.swapaxes(x, 0, 1)
         # process the window of previous frames
         hidden = (torch.randn(1, 28, 3).cuda(),
@@ -285,7 +288,7 @@ class KernelNN(torch.nn.Module):
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
-        pdb.set_trace()
+
         emb = self.emb(data.x_feature)
         x = x.reshape(emb.shape[0], -1)
         # print("data.x_aminoacid", data.x_aminoacid.shape)
@@ -323,7 +326,7 @@ def parse_args():
     parser.add_argument("--depth", type=int, default=6)
     parser.add_argument("--node_features", type=int, default=8)
     parser.add_argument("--edge_features", type=int, default=6)
-    parser.add_argument("--num_embeddings", type=int, default=20)
+    parser.add_argument("--num_embeddings", type=int, default=21)
     parser.add_argument("--embedding_dim", type=int, default=4)
     parser.add_argument("--split_pct", type=float, default=0.8)
     parser.add_argument("--num_data_workers", type=int, default=0)
