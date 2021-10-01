@@ -258,7 +258,7 @@ class KernelNN(torch.nn.Module):
         self.embedding_dim = embedding_dim
         self.x_position_dim = x_position_dim
 
-        self.lstm = nn.LSTM(x_position_dim, x_position_dim)
+        self.lstm = nn.LSTM(x_position_dim, x_position_dim, batch_first=True)
         self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
 
         self.emb = nn.Embedding(num_embeddings, embedding_dim)
@@ -274,12 +274,7 @@ class KernelNN(torch.nn.Module):
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
         x = data.x_position.reshape(-1, args.window_size, args.num_residues, 3)
-        x = torch.swapaxes(x, 0, 1)
-        # process the window of previous frames
-        hidden = (torch.randn(1, args.num_residues, 3).cuda(),
-                  torch.randn(1, args.num_residues, 3).cuda())
-        for i in x:
-            x, hidden = self.lstm(i, hidden)
+        x, hidden = self.lstm(x, hidden)
         x = self.lstm_fc(x)
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
@@ -334,6 +329,8 @@ def parse_args():
     parser.add_argument("--plot_per_epochs", type=int, default=1)
     parser.add_argument("--window_size", type=int, default=10, help="Size of window to feed into network")
     parser.add_argument("--num_residues", type=int, default=28)
+    parser.add_argument("--latent_space_starting_frame", type=int, default=133000)
+    parser.add_argument("--latent_space_num_frames", type=int, default=10000)
 
     args = parser.parse_args()
 
@@ -539,6 +536,21 @@ def main():
 
     print("Started training")
 
+    # calculate the starting points for the prediction propagation movie
+    if args.generate_movie:
+        total_steps = len(valid_dataset)
+        potential_starts = list(range(0, total_steps, args.window_size))
+        if len(potential_starts) < 3:
+            starting_points = potential_starts
+        else:
+            starting_points = []
+            # first window
+            starting_points.append(0)
+            # middle window
+            starting_points.append(potential_starts[(len(potential_starts)//2)])
+            # last window
+            starting_points.append(potential_starts[-1])
+
     # Start training
     best_loss = float("inf")
     for epoch in range(args.epochs):
@@ -547,19 +559,19 @@ def main():
         avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
         video = None
         if args.generate_movie and (epoch % args.plot_per_epochs == 0):
-            make_propagation_movie(model, valid_dataset, device, args.num_movie_frames)
+            make_propagation_movie(model, valid_dataset, device, args.num_movie_frames, starting_points=starting_points)
             video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
                 latent_spaces = []
-                for inference_step in range(10000):
+                for inference_step in range(args.latent_space_num_frames):
 
-                    out, latent = model.module.forward(train_dataset[inference_step+133000].cuda(), return_latent=True, single_example=True)
+                    out, latent = model.module.forward(train_dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
                     latent = latent.cpu().numpy().flatten()
                     latent_spaces.append(latent)
 
                 latent_spaces = np.array(latent_spaces)
-                color_dict = {'RMSD': dataset.rmsd_values[133000:143000]}
+                color_dict = {'RMSD': dataset.rmsd_values[args.latent_space_starting_frame:args.latent_space_starting_frame+args.latent_space_num_frames]}
                 out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
                 html_plot = wandb.Html(out_html['RMSD'], inject=False)
         else:
