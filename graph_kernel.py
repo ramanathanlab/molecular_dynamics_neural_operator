@@ -257,8 +257,8 @@ class KernelNN(torch.nn.Module):
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         self.x_position_dim = x_position_dim
-
-        self.lstm = nn.LSTM(x_position_dim, x_position_dim, batch_first=True)
+        
+        self.lstm = nn.LSTM(x_position_dim, x_position_dim)
         self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
 
         self.emb = nn.Embedding(num_embeddings, embedding_dim)
