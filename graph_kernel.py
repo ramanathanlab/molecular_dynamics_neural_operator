@@ -257,7 +257,7 @@ class KernelNN(torch.nn.Module):
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         self.x_position_dim = x_position_dim
-        
+
         self.lstm = nn.LSTM(x_position_dim, x_position_dim)
         self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
 
@@ -273,7 +273,8 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
-        # x = data.x_position.reshape(-1, args.window_size, args.num_residues, 3)
+        pdb.set_trace()
+        x = data.x_position.reshape(-1, args.window_size, args.num_residues, 3)
         x, hidden = self.lstm(data.x_position)
         x = self.lstm_fc(x)
         # Use an embedding layer to map the onehot aminoacid vector to
