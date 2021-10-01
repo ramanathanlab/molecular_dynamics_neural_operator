@@ -280,7 +280,7 @@ class KernelNN(torch.nn.Module):
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
         emb = self.emb(data.x_aminoacid)
-        # x = x.reshape(emb.shape[0], -1)
+        x = x.reshape(emb.shape[0], -1)
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
         x = torch.cat((emb, x), dim=1)
