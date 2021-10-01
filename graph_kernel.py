@@ -273,11 +273,11 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
-        x = data.x_position.reshape(-1, args.window_size, 28, 3)
+        x = data.x_position.reshape(-1, args.window_size, args.num_residues, 3)
         x = torch.swapaxes(x, 0, 1)
         # process the window of previous frames
-        hidden = (torch.randn(1, 28, 3).cuda(),
-                  torch.randn(1, 28, 3).cuda())
+        hidden = (torch.randn(1, args.num_residues, 3).cuda(),
+                  torch.randn(1, args.num_residues, 3).cuda())
         for i in x:
             x, hidden = self.lstm(i, hidden)
         x = self.lstm_fc(x)
@@ -333,6 +333,7 @@ def parse_args():
     parser.add_argument("--plot_latent", type=bool, default=True)
     parser.add_argument("--plot_per_epochs", type=int, default=1)
     parser.add_argument("--window_size", type=int, default=10, help="Size of window to feed into network")
+    parser.add_argument("--num_residues", type=int, default=28)
 
     args = parser.parse_args()
 
@@ -408,7 +409,7 @@ def get_contact_map(pair_data):
     row = pair_data.edge_index.cpu().numpy()[0]
     col = pair_data.edge_index.cpu().numpy()[1]
     val = np.ones(len(row))
-    dense_contact_map = coo_matrix((val, (row, col)), shape=(28, 28)).toarray()
+    dense_contact_map = coo_matrix((val, (row, col)), shape=(args.num_residues, args.num_residues)).toarray()
     return dense_contact_map
 
 
