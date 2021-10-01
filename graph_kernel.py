@@ -276,6 +276,8 @@ class KernelNN(torch.nn.Module):
         pdb.set_trace()
         x = data.x_position.reshape(-1, args.window_size, args.num_residues, 3)
         x, hidden = self.lstm(data.x_position)
+        # take the last time slice, we don't want all of them
+        x = x[-args.batch_size:]
         x = self.lstm_fc(x)
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
