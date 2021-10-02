@@ -503,7 +503,7 @@ def main():
         batch_size=args.batch_size,
         shuffle=True,
         drop_last=True,
-        pin_memory=True,
+        pin_memory=False,
         num_workers=args.num_data_workers,
         prefetch_factor=args.prefetch_factor,
         persistent_workers=args.persistent_workers,
