@@ -24,8 +24,9 @@ import wandb
 import os
 import imageio
 import pdb
+import sys
 
-from dataset import ContactMapDataset, PairData
+from dataset import ContactMapDataset, PairData, ContactMapNewDataset
 
 from mdlearn.utils import log_latent_visualization
 
@@ -33,12 +34,17 @@ EPS = 1e-15
 
 
 def train_valid_split(
-        dataset: Dataset, split_pct: float = 0.8, method: str = "random", **kwargs
+        dataset: Dataset, split_pct: float = 0.8, method: str = "random", 
+        augment_by_reversing_prob: float = 0,
+        augment_by_rotating180_prob: float = 0,
+        augment_by_translating_prob: float = 0,
+        augment_with_noise_mu: float = 0,
+        **kwargs
 ) -> Tuple[DataListLoader, DataListLoader]:
     """Creates training and validation DataLoaders from :obj:`dataset`.
     Parameters
     ----------
-    dataset : Dataset
+    dataset : 
         A PyTorch dataset class derived from :obj:`torch.utils.data.Dataset`.
     split_pct : float
         Percentage of data to be used as training data after a split.
@@ -64,6 +70,13 @@ def train_valid_split(
         valid_dataset = Subset(dataset, indices[train_length:])
     else:
         raise ValueError(f"Invalid method: {method}.")
+    
+    # Augmentation happens only during training:
+    train_dataset.augment_by_reversing_prob = augment_by_reversing_prob
+    train_dataset.augment_by_rotating180_prob = augment_by_rotating180_prob
+    train_dataset.augment_by_translating_prob = augment_by_translating_prob
+    train_dataset.augment_with_noise_mu = augment_with_noise_mu
+    
     train_loader = DataListLoader(train_dataset, **kwargs)
     valid_loader = DataListLoader(valid_dataset, **kwargs)
     return train_loader, valid_loader, train_dataset, valid_dataset
@@ -250,14 +263,15 @@ class KernelNN(torch.nn.Module):
             out_width: int = 1,
             num_embeddings: int = 20,
             embedding_dim: int = 4,
-            x_position_dim: int = 3
+            x_position_dim: int = 3,
+            num_nodes: int = 28
     ) -> None:
         super(KernelNN, self).__init__()
         self.depth = depth
         self.num_embeddings = num_embeddings
         self.embedding_dim = embedding_dim
         self.x_position_dim = x_position_dim
-
+        self.num_nodes = num_nodes
         self.lstm = nn.LSTM(x_position_dim, x_position_dim)
         self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
 
@@ -273,11 +287,11 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
-        x = data.x_position.reshape(-1, args.window_size, 28, 3)
+        x = data.x_position.reshape(-1, args.window_size, self.num_nodes, 3)
         x = torch.swapaxes(x, 0, 1)
         # process the window of previous frames
-        hidden = (torch.randn(1, 28, 3).cuda(),
-                  torch.randn(1, 28, 3).cuda())
+        hidden = (torch.randn(1, self.num_nodes, 3).cuda(),
+                  torch.randn(1, self.num_nodes, 3).cuda())
         for i in x:
             x, hidden = self.lstm(i, hidden)
         x = self.lstm_fc(x)
@@ -289,7 +303,7 @@ class KernelNN(torch.nn.Module):
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
         x = torch.cat((emb, x), dim=1)
-        # print("x:", x.shape)
+
         x = F.relu(self.fc1(x))
         for k in range(self.depth):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
@@ -298,11 +312,78 @@ class KernelNN(torch.nn.Module):
         if return_latent:
             latent_dim = torch.clone(x)
         x = self.fc2(x)
+
         if return_latent:
             return [x, latent_dim]
         else:
             return x
 
+
+class BasicNN(torch.nn.Module):
+    def __init__(
+            self,
+            in_width: int = 1,
+            out_width: int = 1,
+    ) -> None:
+        super(BasicNN, self).__init__()
+        self.in_width = in_width
+        self.out_width = out_width
+        self.fc1 = torch.nn.Linear(in_width, out_width)
+
+    def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
+        x = data.x_position.reshape(-1, self.in_width) #args.window_size * self.num_nodes * 3
+        x = self.fc1(x)
+        x = x.reshape(-1, 3)
+        #print("x:", x.shape)
+        #sys.exit(0)        
+        if return_latent:
+            return [x, torch.clone(x)]
+        else:
+            return x
+
+
+class BasicLSTM(torch.nn.Module):
+    def __init__(
+            self,
+            in_width: int = 1,
+            out_width: int = 1,
+            x_position_dim: int = 3,
+            num_nodes: int = 28
+    ) -> None:
+        super(BasicLSTM, self).__init__()
+        #self.in_width = in_width
+        #self.out_width = out_width
+        #self.fc1 = torch.nn.Linear(in_width, out_width)
+        self.num_nodes = num_nodes
+        self.lstm = nn.LSTM(x_position_dim, x_position_dim) #in_width, out_width)#x_position_dim)
+        #self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
+
+    def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
+        x = data.x_position.reshape(-1, args.window_size, self.num_nodes, 3)
+        #print('x0', x.shape)
+        x = torch.swapaxes(x, 0, 1)        
+        #x = torch.swapaxes(x, 1, 2)        
+        #print('x1', x.shape)
+        # process the window of previous frames
+        #hidden = (torch.randn(1, self.num_nodes, 3).cuda(),
+        #          torch.randn(1, self.num_nodes, 3).cuda())        
+        #hidden = (torch.randn(1, x.shape[-2], 3).cuda(),
+        #          torch.randn(1, x.shape[-2], 3).cuda())  
+        hidden = (torch.zeros(1, x.shape[-2], 3).cuda(),
+                  torch.zeros(1, x.shape[-2], 3).cuda())  
+        #print('hidden', hidden)
+        for x_i in x:
+            #print(x.shape, x_i.shape)
+            xx, hidden = self.lstm(x_i, hidden)
+        x = xx
+        #x = self.lstm_fc(x)
+        x = x.reshape(-1, 3)
+        #print("x:", x.shape)
+        #sys.exit(0)        
+        if return_latent:
+            return [x, torch.clone(x)]
+        else:
+            return x
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -328,11 +409,23 @@ def parse_args():
     parser.add_argument("--prefetch_factor", type=int, default=2)
     parser.add_argument("--persistent_workers", type=str, default="False")
     parser.add_argument("--non_blocking", type=str, default="False")
-    parser.add_argument("--generate_movie", type=bool, default=True)
     parser.add_argument("--num_movie_frames", type=int, default=5)
-    parser.add_argument("--plot_latent", type=bool, default=True)
     parser.add_argument("--plot_per_epochs", type=int, default=1)
     parser.add_argument("--window_size", type=int, default=10, help="Size of window to feed into network")
+
+    #parser.add_argument("--plot_latent", type=bool, default=True)
+    #parser.add_argument("--generate_movie", type=bool, default=True)
+    parser.set_defaults(plot_latent=True)
+    parser.set_defaults(generate_movie=True)
+    parser.add_argument('--dont-plot_latent', dest='plot_latent', action='store_false')
+    parser.add_argument('--dont-generate_movie', dest='generate_movie', action='store_false')
+    parser.add_argument("--augment_by_reversing_prob", type=float, default=0)
+    parser.add_argument("--augment_by_rotating180_prob", type=float, default=0)
+    parser.add_argument("--augment_by_translating_prob", type=float, default=0)
+    parser.add_argument("--augment_with_noise_mu", type=float, default=0)
+    parser.add_argument('--ntrain', type=int, default=250000)
+    parser.add_argument('--model', type=str, default='KernelNN', choices=['KernelNN', 'BasicNN', 'BasicLSTM'])
+    parser.add_argument('--frame_step', type=int, default=1, help="Number of frames in the raw trajectory between frames chosen for the window, i.e., using window_size frames every frame_step frames, predict the frame that comes after frame_step frames")
 
     args = parser.parse_args()
 
@@ -343,7 +436,8 @@ def parse_args():
     args.non_blocking = args.non_blocking == "True"
 
     # use the weights and biases trial name to store output
-    args.run_path = args.run_path / wandb.run.name
+    if wandb.run.name:
+        args.run_path = args.run_path / wandb.run.name
     # Make output directory
     args.run_path.mkdir()
 
@@ -442,6 +536,9 @@ def train(model, train_loader, optimizer, loss_fn, device):
         # batch = batch.to(device, non_blocking=args.non_blocking)
 
         optimizer.zero_grad()
+
+        # TODO: normally augmentations would go here, after a normal batch is produced
+
         out = model(batch)
 
         # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
@@ -492,7 +589,7 @@ def main():
     torch.set_num_threads(1 if args.num_data_workers == 0 else args.num_data_workers)
 
     # Setup training and validation datasets
-    dataset = ContactMapDataset(args.data_path, window_size=args.window_size)
+    dataset = ContactMapNewDataset(args.data_path, window_size=args.window_size, ntrain=args.ntrain, frame_step=args.frame_step)
 
     print("Created dataset")
 
@@ -507,6 +604,10 @@ def main():
         num_workers=args.num_data_workers,
         prefetch_factor=args.prefetch_factor,
         persistent_workers=args.persistent_workers,
+        augment_by_reversing_prob=args.augment_by_reversing_prob,
+        augment_by_rotating180_prob=args.augment_by_rotating180_prob,
+        augment_by_translating_prob=args.augment_by_translating_prob,
+        augment_with_noise_mu=args.augment_with_noise_mu
     )
 
     print("Split training and validation sets")
@@ -515,16 +616,29 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Setup model, optimizer, loss function and scheduler
-    model = DataParallel(KernelNN(
-        args.width,
-        args.kernel_width,
-        args.depth,
-        args.edge_features,
-        args.node_features,
-        args.out_width,
-        args.num_embeddings,
-        args.embedding_dim,
-    )).to(device)
+    if args.model == 'KernelNN':
+        model = DataParallel(KernelNN(
+            args.width,
+            args.kernel_width,
+            args.depth,
+            args.edge_features,
+            args.node_features,
+            args.out_width,
+            args.num_embeddings,
+            args.embedding_dim,
+            num_nodes=dataset.num_nodes
+        )).to(device)
+    elif args.model == 'BasicLSTM':
+        model = DataParallel(BasicLSTM(
+            args.window_size * dataset.num_nodes * 3,
+            dataset.num_nodes * args.out_width,
+            num_nodes=dataset.num_nodes
+        )).to(device)        
+    else:
+        model = DataParallel(BasicNN(
+            args.window_size * dataset.num_nodes * 3,
+            dataset.num_nodes * args.out_width
+        )).to(device)
 
     print("Initialized model")
 
@@ -573,7 +687,7 @@ def main():
             f"\ttrain_loss: {avg_train_loss}"
             f"\tvalid_loss: {avg_valid_loss}"
         )
-
+        sys.stdout.flush()
         # Save the model with the best validation loss
         if avg_valid_loss < best_loss:
             best_loss = avg_valid_loss
@@ -589,5 +703,6 @@ def main():
 if __name__ == "__main__":
     wandb.init(project="bba_gno")
     args = parse_args()
+    print(args)
     wandb.config.update(args)
     main()
