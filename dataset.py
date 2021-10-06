@@ -116,32 +116,24 @@ class ContactMapDataset(Dataset):
                 self.edge_indices = np.array(f[edge_index_dset_name][:ntrain])
                 self.edge_attrs = np.array(f[edge_attr_dset_name][:ntrain])
                 # get the rmsd nums
-                try:
-                    self.rmsd_values = np.array(f['rmsd'][:ntrain])
-                except ValueError as e:
-                    print("Not able to load rmsd values...")
-                    self.rmsd_values = []
-                if node_feature_dset_name is not None:
-                    self._node_features_dset = f[node_feature_dset_name][...]
+
         else:
             self.edge_indices = []
             self.edge_attrs = []
-            self.rmsd_values = []
-            if node_feature_dset_name is not None:
-                self._node_features_dset = []
             # process each file
             for i in glob.glob(str(path)+'/*.h5'):
                 with h5py.File(i, "r", libver="latest", swmr=False) as f:
                     # COO formated ragged arrays
                     self.edge_indices.append(list(f[edge_index_dset_name][:ntrain]))
                     self.edge_attrs.append(list(f[edge_attr_dset_name][:ntrain]))
-                    # get the rmsd nums
-                    try:
-                        self.rmsd_values.append(list(f['rmsd'][:ntrain]))
-                    except ValueError as e:
-                        print("Not able to load rmsd values...")
-                    if node_feature_dset_name is not None:
-                        self._node_features_dset.append(list(f[node_feature_dset_name][...]))
+
+        try:
+            self.rmsd_values = np.array(f['rmsd'][:ntrain])
+        except ValueError as e:
+            print("Not able to load rmsd values...")
+            self.rmsd_values = []
+        if node_feature_dset_name is not None:
+            self._node_features_dset = f[node_feature_dset_name][...]
 
         if len(self.edge_indices) - self.window_size - self.horizon + 1 < 0:
             raise ValueError(
