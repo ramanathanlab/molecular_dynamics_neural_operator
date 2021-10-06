@@ -31,6 +31,8 @@ from mdlearn.utils import log_latent_visualization
 
 EPS = 1e-15
 
+PathLike = Union[str, Path]
+
 
 def train_valid_split(
         dataset: Dataset, split_pct: float = 0.8, method: str = "random", **kwargs
@@ -333,6 +335,7 @@ def parse_args():
     parser.add_argument("--num_residues", type=int, default=28)
     parser.add_argument("--latent_space_starting_frame", type=int, default=133000)
     parser.add_argument("--latent_space_num_frames", type=int, default=10000)
+    parser.add_argument("--node_features_path", type=Pathlike, default=None)
 
     args = parser.parse_args()
 
@@ -492,7 +495,8 @@ def main():
     torch.set_num_threads(1 if args.num_data_workers == 0 else args.num_data_workers)
 
     # Setup training and validation datasets
-    dataset = ContactMapDataset(args.data_path, window_size=args.window_size)
+    dataset = ContactMapDataset(args.data_path, window_size=args.window_size,
+                                node_feature_dset_path=args.node_features_path)
 
     print("Created dataset")
 
