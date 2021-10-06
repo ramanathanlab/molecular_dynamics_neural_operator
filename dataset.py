@@ -133,22 +133,25 @@ class ContactMapDataset(Dataset):
             self.edge_indices = []
             self.edge_attrs = []
             # process each file
-            for i in glob.glob(str(path)+'/*.h5'):
+            h5_files = glob.glob(str(path)+'/*.h5')
+            for i in h5_files:
                 with h5py.File(i, "r", libver="latest", swmr=False) as f:
                     # COO formated ragged arrays
                     self.edge_indices.append(list(f[edge_index_dset_name][:ntrain]))
                     self.edge_attrs.append(list(f[edge_attr_dset_name][:ntrain]))
-                    try:
-                        self.rmsd_values = np.array(f['rmsd'][:ntrain])
-                    except ValueError as e:
-                        print("Not able to load rmsd values...")
-                        self.rmsd_values = []
-                    if node_feature_dset_name is not None:
-                        if node_feature_dset_path is not None:
-                            with h5py.File(nodnode_feature_dset_path, "r", libver="latest", swmr=False) as node_file:
-                                self._node_features_dset = node_file[node_feature_dset_name][...]
-                        else:
-                            self._node_features_dset = f[node_feature_dset_name][...]
+            
+            with h5py.File(h5_files[0], "r", libver="latest", swmr=False) as f:
+                try:
+                    self.rmsd_values = np.array(f['rmsd'][:ntrain])
+                except ValueError as e:
+                    print("Not able to load rmsd values...")
+                    self.rmsd_values = []
+                if node_feature_dset_name is not None:
+                    if node_feature_dset_path is not None:
+                        with h5py.File(nodnode_feature_dset_path, "r", libver="latest", swmr=False) as node_file:
+                            self._node_features_dset = node_file[node_feature_dset_name][...]
+                    else:
+                        self._node_features_dset = f[node_feature_dset_name][...]
 
 
 
