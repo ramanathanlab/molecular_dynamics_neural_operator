@@ -36,7 +36,7 @@ PathLike = Union[str, Path]
 
 def train_valid_split(
         dataset: Dataset, split_pct: float = 0.8, method: str = "random", **kwargs
-) -> Tuple[DataListLoader, DataListLoader]:
+) -> Tuple[DataLoader, DataLoader]:
     """Creates training and validation DataLoaders from :obj:`dataset`.
     Parameters
     ----------
@@ -66,8 +66,8 @@ def train_valid_split(
         valid_dataset = Subset(dataset, indices[train_length:])
     else:
         raise ValueError(f"Invalid method: {method}.")
-    train_loader = DataListLoader(train_dataset, **kwargs)
-    valid_loader = DataListLoader(valid_dataset, **kwargs)
+    train_loader = DataLoader(train_dataset, **kwargs)
+    valid_loader = DataLoader(valid_dataset, **kwargs)
     return train_loader, valid_loader, train_dataset, valid_dataset
 
 
@@ -395,7 +395,7 @@ def recursive_propagation(model, dataset, device, num_steps: int, starting_point
             input_ = dataset[start].to(device)
             for i in range(start, start+num_steps):
                 input_ = input_.to(device)
-                output = model.module(input_, single_example=True)
+                output = model(input_, single_example=True)
                 # generate new x positions
                 last_window = input_.x_position.cpu().numpy()[1:, :, :]
                 out_x_position = output.detach().cpu().numpy()
@@ -519,7 +519,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Setup model, optimizer, loss function and scheduler
-    model = DataParallel(KernelNN(
+    model = KernelNN(
         args.width,
         args.kernel_width,
         args.depth,
@@ -528,7 +528,7 @@ def main():
         args.out_width,
         args.num_embeddings,
         args.embedding_dim,
-    )).to(device)
+    ).to(device)
 
     print("Initialized model")
 
@@ -572,7 +572,7 @@ def main():
                 latent_spaces = []
                 for inference_step in range(args.latent_space_num_frames):
 
-                    out, latent = model.module.forward(train_dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
+                    out, latent = model.forward(train_dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
                     latent = latent.cpu().numpy().flatten()
                     latent_spaces.append(latent)
 
