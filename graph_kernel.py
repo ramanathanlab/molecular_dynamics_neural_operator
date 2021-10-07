@@ -452,11 +452,11 @@ def train(model, train_loader, optimizer, loss_fn, device):
         # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
         # loss.backward()
 
-        concat_y = torch.cat([data.y for data in batch]).to(out.device)
-        l2 = loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
+        # concat_y = torch.cat([data.y for data in batch]).to(out.device)
+        l2 = loss_fn(out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1))
         l2.backward()
 
-        mse_loss = mse_fn(out, concat_y)
+        mse_loss = mse_fn(out, batch.y)
 
         optimizer.step()
         avg_loss += l2.item()
@@ -476,12 +476,12 @@ def validate(model, valid_loader, loss_fn, device):
     with torch.no_grad():
         for batch in valid_loader:
             data = batch.to(device, non_blocking=args.non_blocking)
-            out = model(batch)
-            concat_y = torch.cat([data.y for data in batch]).to(out.device)
+            out = model(data)
+            # concat_y = torch.cat([data.y for data in batch]).to(out.device)
             avg_loss += loss_fn(
-                out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1)
+                out.view(args.batch_size, -1), batch.y.view(args.batch_size, -1)
             ).item()
-            avg_mse += mse_fn(out, concat_y)
+            avg_mse += mse_fn(out, batch.y)
     avg_loss /= len(valid_loader)
     avg_mse /= len(valid_loader)
     return avg_loss, avg_mse
