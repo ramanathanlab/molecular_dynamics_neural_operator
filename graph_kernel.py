@@ -442,7 +442,7 @@ def train(model, train_loader, optimizer, loss_fn, device):
     avg_mse = 0.0
     mse_fn = torch.nn.MSELoss()
     for batch in tqdm(train_loader):
-        # batch = batch.to(device, non_blocking=args.non_blocking)
+        batch = batch.to(device, non_blocking=args.non_blocking)
 
         optimizer.zero_grad()
         out = model(batch)
@@ -475,7 +475,7 @@ def validate(model, valid_loader, loss_fn, device):
     mse_fn = torch.nn.MSELoss()
     with torch.no_grad():
         for batch in valid_loader:
-            # data = batch.to(device, non_blocking=args.non_blocking)
+            data = batch.to(device, non_blocking=args.non_blocking)
             out = model(batch)
             concat_y = torch.cat([data.y for data in batch]).to(out.device)
             avg_loss += loss_fn(
