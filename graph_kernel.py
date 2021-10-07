@@ -250,7 +250,7 @@ class KernelNN(torch.nn.Module):
             ker_in: int,
             in_width: int = 1,
             out_width: int = 1,
-            num_embeddings: int = 21,
+            num_embeddings: int = 20,
             embedding_dim: int = 4,
             x_position_dim: int = 3
     ) -> None:
