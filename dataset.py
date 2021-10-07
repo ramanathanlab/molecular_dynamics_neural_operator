@@ -157,8 +157,6 @@ class ContactMapDataset(Dataset):
                 "The sum of window_size and horizon is longer than the input data"
             )
 
-        pdb.set_trace()
-
         # Put positions in order (N, num_nodes, 3)
         self.edge_attrs = np.transpose(self.edge_attrs, [0, 2, 1])
         #print(self._node_features_dset)
