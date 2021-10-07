@@ -9,9 +9,6 @@ from torch_geometric.typing import OptTensor
 import pdb
 import glob
 
-PathLike = Union[str, Path]
-
-
 def aminoacid_int_to_onehot(labels):
     # 20 amino acids total
     onehot = np.zeros((len(labels), 20))
