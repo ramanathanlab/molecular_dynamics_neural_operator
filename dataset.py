@@ -61,7 +61,7 @@ class ContactMapDataset(Dataset):
 
     def __init__(
         self,
-        path: PathLike,
+        path: str,
         edge_index_dset_name: str = "contact_map",
         edge_attr_dset_name: str = "point_cloud",
         node_feature_dset_name: Optional[str] = "amino_acids",
@@ -69,7 +69,7 @@ class ContactMapDataset(Dataset):
         constant_num_node_features: int = 20,
         window_size: int = 1,
         horizon: int = 1,
-        node_feature_dset_path: PathLike = None,
+        node_feature_dset_path: str = None,
     ):
         """
         Parameters
