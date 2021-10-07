@@ -134,8 +134,8 @@ class ContactMapDataset(Dataset):
             for i in h5_files:
                 with h5py.File(i, "r", libver="latest", swmr=False) as f:
                     # COO formated ragged arrays
-                    self.edge_indices.append(list(f[edge_index_dset_name][:ntrain]))
-                    self.edge_attrs.append(list(f[edge_attr_dset_name][:ntrain]))
+                    self.edge_indices.extend(list(f[edge_index_dset_name][:ntrain]))
+                    self.edge_attrs.extend(list(f[edge_attr_dset_name][:ntrain]))
 
             with h5py.File(h5_files[0], "r", libver="latest", swmr=False) as f:
                 try:
