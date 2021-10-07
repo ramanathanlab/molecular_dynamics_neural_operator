@@ -335,7 +335,7 @@ def parse_args():
     parser.add_argument("--num_residues", type=int, default=28)
     parser.add_argument("--latent_space_starting_frame", type=int, default=133000)
     parser.add_argument("--latent_space_num_frames", type=int, default=10000)
-    parser.add_argument("--node_features_path", type=Pathlike, default=None)
+    parser.add_argument("--node_features_path", type=Path, default=None)
 
     args = parser.parse_args()
 
