@@ -131,6 +131,7 @@ class ContactMapDataset(Dataset):
             self.edge_attrs = []
             # process each file
             h5_files = glob.glob(str(path)+'/*.h5')
+            h5_files.sort()
             for i in h5_files:
                 with h5py.File(i, "r", libver="latest", swmr=False) as f:
                     # COO formated ragged arrays

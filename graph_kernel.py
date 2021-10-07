@@ -269,7 +269,7 @@ class KernelNN(torch.nn.Module):
 
         kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
         self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
-        # self.conv2 = NNConv_old(width, width, kernel, aggr="mean")
+        self.conv2 = NNConv_old(width, width, kernel, aggr="mean")
 
         self.fc2 = torch.nn.Linear(width, out_width)
 
@@ -292,8 +292,8 @@ class KernelNN(torch.nn.Module):
         x = F.relu(self.fc1(x))
         for k in range(self.depth):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
-        # for k in range(self.depth):
-        #     x = F.relu(self.conv2(x, edge_index, edge_attr))
+        for k in range(self.depth):
+            x = F.relu(self.conv2(x, edge_index, edge_attr))
         if return_latent:
             latent_dim = torch.clone(x)
         x = self.fc2(x)
