@@ -105,7 +105,7 @@ class ContactMapDataset(Dataset):
         self.horizon = horizon
 
         # Truncate dataset for shorter training time
-        ntrain = 250000
+        ntrain = 5
 
         if str(path)[-3:] == '.h5':
             # only process one file

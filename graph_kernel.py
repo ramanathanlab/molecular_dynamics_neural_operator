@@ -350,6 +350,12 @@ def parse_args():
     # Make output directory
     args.run_path.mkdir()
 
+    latent_html_path = args.run_path / 'latent_html'
+    latent_html_path.mkdir()
+
+    gno_movie_path = args.run_path / 'gno_movie'
+    gno_movie_path.mkdir()
+
     return args
 
 
@@ -428,13 +434,13 @@ def make_propagation_movie(model, dataset, device, num_steps=5, starting_points=
             fig.suptitle("Time Step {}".format(i + 1))
             ax[0].set_title("Forecast")
             ax[1].set_title("Real")
-            filename = '/tmp/gno_movie/frame{}.png'.format(i + 1)
+            filename = gno_movie_path / 'frame{}.png'.format(i + 1)
             filenames.append(filename)
             plt.savefig(filename, dpi=150)
     images = []
     for filename in filenames:
         images.append(imageio.imread(filename))
-    imageio.mimsave('/tmp/gno_movie/movie.mp4', images)
+    imageio.mimsave(gno_movie_path / 'movie.mp4', images)
 
 def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
@@ -566,7 +572,7 @@ def main():
         video = None
         if args.generate_movie and (epoch % args.plot_per_epochs == 0):
             make_propagation_movie(model, valid_dataset, device, args.num_movie_frames, starting_points=starting_points)
-            video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
+            video = wandb.Video(gno_movie_path / 'movie.mp4', fps=2, format="mp4")
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
                 latent_spaces = []
@@ -578,7 +584,7 @@ def main():
 
                 latent_spaces = np.array(latent_spaces)
                 color_dict = {'RMSD': dataset.rmsd_values[args.latent_space_starting_frame:args.latent_space_starting_frame+args.latent_space_num_frames]}
-                out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
+                out_html = log_latent_visualization(latent_spaces, color_dict, latent_html_path, epoch=epoch, method="PCA")
                 html_plot = wandb.Html(out_html['RMSD'], inject=False)
         else:
             html_plot = None
