@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 from tqdm import tqdm
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 from pathlib import Path
 from timeit import default_timer
 from collections import defaultdict
