@@ -146,7 +146,7 @@ class ContactMapDataset(Dataset):
                 if node_feature_dset_name is not None:
                     if node_feature_dset_path is not None:
                         with h5py.File(node_feature_dset_path, "r", libver="latest", swmr=False) as node_file:
-                            self._node_features_dset = node_file[node_feature_dset_name][...]
+                            self._node_features_dset = np.array(node_file[node_feature_dset_name][...])
                     else:
                         self._node_features_dset = f[node_feature_dset_name][...]
 
