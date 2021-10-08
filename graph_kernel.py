@@ -583,6 +583,8 @@ def main():
 
                 latent_spaces = np.array(latent_spaces)
                 color_dict = {'RMSD': dataset.rmsd_values[args.latent_space_starting_frame:args.latent_space_starting_frame+args.latent_space_num_frames]}
+                print(len(color_dict['RMSD']))
+                print(len(latent_spaces))
                 out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
                 html_plot = wandb.Html(out_html['RMSD'], inject=False)
         else:
