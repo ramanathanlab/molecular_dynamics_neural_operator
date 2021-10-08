@@ -564,6 +564,10 @@ def main():
 
     # Start training
     best_loss = float("inf")
+    # save rmsd paints
+    np.save(args.run_path / 'rmsd.npy', valid_dataset.rmsd_values[
+                                      args.latent_space_starting_frame:args.latent_space_starting_frame + args.latent_space_num_frames])
+
     for epoch in range(args.epochs):
         time = default_timer()
         avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
@@ -582,16 +586,25 @@ def main():
                     latent_spaces.append(latent)
 
                 latent_spaces = np.array(latent_spaces)
-                color_dict = {'RMSD': dataset.rmsd_values[args.latent_space_starting_frame:args.latent_space_starting_frame+args.latent_space_num_frames]}
+                # save in directory
+                np.save(args.run_path/'latent_epoch{}.npy'.format(epoch), latent_spaces)
+                color_dict = {'RMSD': valid_dataset.rmsd_values[
+                                      args.latent_space_starting_frame:args.latent_space_starting_frame + args.latent_space_num_frames]}
+
                 print(len(color_dict['RMSD']))
                 print(len(latent_spaces))
                 out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
                 html_plot = wandb.Html(out_html['RMSD'], inject=False)
+                out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch,
+                                                    method="TSNE")
+                html_plot2 = wandb.Html(out_html['RMSD'], inject=False)
         else:
             html_plot = None
+            html_plot2 = None
         wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
                    'avg_train_mse': avg_train_mse, 'avg_valid_mse': avg_valid_mse,
-                   'valid_prediction_video': video, 'RMSD_latent_plot': html_plot})
+                   'valid_prediction_video': video, 'PCA_RMSD_latent_plot': html_plot,
+                   'TSNE_RMSD_latent_plot': html_plot2})
         scheduler.step()
         print(
             f"Epoch: {epoch}"
