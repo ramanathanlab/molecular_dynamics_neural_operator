@@ -276,9 +276,14 @@ class KernelNN(torch.nn.Module):
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
         x = data.x_position.reshape(-1, args.window_size, args.num_residues, 3)
-        x, hidden = self.lstm(x)
+        x = torch.swapaxes(x, 0, 1)
+        hidden = (torch.zeros(1, args.num_residues, 3).cuda(),
+                  torch.zeros(1, args.num_residues, 3).cuda())
+        for i in x:
+            x, hidden = self.lstm(i, hidden)
+        # x, hidden = self.lstm(x)
         # take the last time slice, we don't want all of them
-        x = x[-args.batch_size:]
+        # x = x[-args.batch_size:]
         x = self.lstm_fc(x)
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
