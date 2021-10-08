@@ -577,7 +577,7 @@ def main():
                 latent_spaces = []
                 for inference_step in range(args.latent_space_num_frames):
 
-                    out, latent = model.module.forward(train_dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
+                    out, latent = model.module.forward(valid_dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
                     latent = latent.cpu().numpy().flatten()
                     latent_spaces.append(latent)
 
