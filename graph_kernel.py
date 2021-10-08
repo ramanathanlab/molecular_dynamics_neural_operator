@@ -1,7 +1,7 @@
 import argparse
 import numpy as np
 from tqdm import tqdm
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Union
 from pathlib import Path
 from timeit import default_timer
 from collections import defaultdict
@@ -31,6 +31,8 @@ from dataset import ContactMapDataset, PairData, ContactMapNewDataset
 from mdlearn.utils import log_latent_visualization
 
 EPS = 1e-15
+
+PathLike = Union[str, Path]
 
 
 def train_valid_split(
@@ -858,7 +860,7 @@ class BasicMLP(torch.nn.Module):
         else:
             return x
 
-
+def count_parameters(model): return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -887,6 +889,10 @@ def parse_args():
     parser.add_argument("--num_movie_frames", type=int, default=5)
     parser.add_argument("--plot_per_epochs", type=int, default=1)
     parser.add_argument("--window_size", type=int, default=10, help="Size of window to feed into network")
+    parser.add_argument("--num_residues", type=int, default=28)
+    parser.add_argument("--latent_space_starting_frame", type=int, default=133000)
+    parser.add_argument("--latent_space_num_frames", type=int, default=10000)
+    parser.add_argument("--node_features_path", type=Path, default=None)
 
     #parser.add_argument("--plot_latent", type=bool, default=True)
     #parser.add_argument("--generate_movie", type=bool, default=True)
@@ -903,6 +909,7 @@ def parse_args():
     parser.add_argument('--frame_step', type=int, default=1, help="Number of frames in the raw trajectory between frames chosen for the window, i.e., using window_size frames every frame_step frames, predict the frame that comes after frame_step frames")
     parser.add_argument("--MLP_n_layers", type=int, default=2, help="Number of layers in the BasicMLP")
     parser.add_argument("--LSTM_n_layers", type=int, default=10, help="Number of layers in the BasicLSTM")
+    parser.add_argument("--residue_step", type=int, default=1, help="Use every residue_step residue from the trajectory in the model")
 
     args = parser.parse_args()
 
@@ -981,7 +988,7 @@ def get_contact_map(pair_data):
     row = pair_data.edge_index.cpu().numpy()[0]
     col = pair_data.edge_index.cpu().numpy()[1]
     val = np.ones(len(row))
-    dense_contact_map = coo_matrix((val, (row, col)), shape=(28, 28)).toarray()
+    dense_contact_map = coo_matrix((val, (row, col)), shape=(args.num_residues, args.num_residues)).toarray()
     return dense_contact_map
 
 
@@ -1085,7 +1092,8 @@ def main():
     valid_length = args.n_frames - train_length
 
     train_dataset = ContactMapNewDataset(
-        args.data_path, window_size=args.window_size, frames_range=[0, train_length], frame_step=args.frame_step,
+        args.data_path, node_feature_dset_path=args.node_features_path, 
+        window_size=args.window_size, frames_range=[0, train_length], frame_step=args.frame_step, residue_step=args.residue_step,
         augment_by_reversing_prob=args.augment_by_reversing_prob,
         augment_by_rotating180_prob=args.augment_by_rotating180_prob,
         augment_by_translating_prob=args.augment_by_translating_prob,
@@ -1093,14 +1101,30 @@ def main():
     )
     print(train_dataset)
     valid_dataset = ContactMapNewDataset(
-        args.data_path, window_size=args.window_size, frames_range=[train_length, args.n_frames], frame_step=args.frame_step,
+        args.data_path, node_feature_dset_path=args.node_features_path, 
+        window_size=args.window_size, frames_range=[train_length, args.n_frames], frame_step=args.frame_step, residue_step=args.residue_step,
         augment_by_reversing_prob=0,
         augment_by_rotating180_prob=0,
         augment_by_translating_prob=0,
         augment_with_noise_mu=0
     )
-    print(valid_dataset)
-    print("Created dataset")
+    #dataset = ContactMapDataset(args.data_path, window_size=args.window_size,
+    #                            node_feature_dset_path=args.node_features_path)
+    #print("Created dataset")
+    #train_loader, valid_loader, train_dataset, valid_dataset = train_valid_split(
+    #    dataset,
+    #    args.split_pct,
+    #    method="partition",
+    #    batch_size=args.batch_size,
+    #    shuffle=True,
+    #    drop_last=True,
+    #    pin_memory=False,
+    #    num_workers=args.num_data_workers,
+    #    prefetch_factor=args.prefetch_factor,
+    #    persistent_workers=args.persistent_workers,
+    #)
+    #print(valid_dataset)
+    #print("Created dataset")
     train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=args.num_data_workers, prefetch_factor=args.prefetch_factor, persistent_workers=args.persistent_workers)
     valid_loader = DataListLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=args.num_data_workers, prefetch_factor=args.prefetch_factor, persistent_workers=args.persistent_workers)
 
@@ -1188,7 +1212,7 @@ def main():
     else:
         raise RuntimeError(f'Model {args.model} not supported')
 
-    print("Initialized model", model)
+    print("Initialized model", count_parameters(model), '\n', model)
 
     optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -1200,6 +1224,21 @@ def main():
 
     print("Started training")
 
+    # calculate the starting points for the prediction propagation movie
+    if args.generate_movie:
+        total_steps = len(valid_dataset)
+        potential_starts = list(range(0, total_steps, args.window_size))
+        if len(potential_starts) < 3:
+            starting_points = potential_starts
+        else:
+            starting_points = []
+            # first window
+            starting_points.append(0)
+            # middle window
+            starting_points.append(potential_starts[(len(potential_starts)//2)])
+            # last window
+            starting_points.append(potential_starts[-1])
+
     # Start training
     best_loss = float("inf")
     for epoch in range(args.epochs):
@@ -1208,19 +1247,19 @@ def main():
         avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
         video = None
         if args.generate_movie and (epoch % args.plot_per_epochs == 0):
-            make_propagation_movie(model, valid_dataset, device, args.num_movie_frames)
+            make_propagation_movie(model, valid_dataset, device, args.num_movie_frames, starting_points=starting_points)
             video = wandb.Video('/tmp/gno_movie/movie.mp4', fps=2, format="mp4")
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
                 latent_spaces = []
-                for inference_step in range(10000):
+                for inference_step in range(args.latent_space_num_frames):
 
-                    out, latent = model.module.forward(train_dataset[inference_step+133000].cuda(), return_latent=True, single_example=True)
+                    out, latent = model.module.forward(train_dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
                     latent = latent.cpu().numpy().flatten()
                     latent_spaces.append(latent)
 
                 latent_spaces = np.array(latent_spaces)
-                color_dict = {'RMSD': train_dataset.rmsd_values[133000:143000]}
+                color_dict = {'RMSD': dataset.rmsd_values[args.latent_space_starting_frame:args.latent_space_starting_frame+args.latent_space_num_frames]}
                 out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
                 html_plot = wandb.Html(out_html['RMSD'], inject=False)
         else:
