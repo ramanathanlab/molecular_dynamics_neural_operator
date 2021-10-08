@@ -549,7 +549,7 @@ def main():
 
     # calculate the starting points for the prediction propagation movie
     if args.generate_movie:
-        total_steps = len(valid_dataset)
+        total_steps = len(valid_dataset) - 10
         potential_starts = list(range(0, total_steps, args.window_size))
         if len(potential_starts) < 3:
             starting_points = potential_starts
