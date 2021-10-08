@@ -277,8 +277,8 @@ class KernelNN(torch.nn.Module):
         edge_index, edge_attr = data.edge_index, data.edge_attr
         x = data.x_position.reshape(-1, args.window_size, args.num_residues, 3)
         x = torch.swapaxes(x, 0, 1)
-        hidden = (torch.zeros(1, args.num_residues, 3).cuda(),
-                  torch.zeros(1, args.num_residues, 3).cuda())
+        hidden = (torch.zeros(1, args.batch_size, args.num_residues, 3).cuda(),
+                  torch.zeros(1, args.batch_size, args.num_residues, 3).cuda())
         for i in x:
             x, hidden = self.lstm(i, hidden)
         # x, hidden = self.lstm(x)
