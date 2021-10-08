@@ -2,11 +2,12 @@ import torch
 import h5py
 import numpy as np
 from pathlib import Path
-from typing import Union, Optional
+from typing import Union, Optional, Tuple
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 from torch_geometric.typing import OptTensor
 import pdb
+import random
 
 PathLike = Union[str, Path]
 
@@ -54,6 +55,8 @@ class PairData(Data):
         self.edge_index = self.edge_index.pin_memory()
         return self
 
+    # TODO: implement augmentations here
+
 
 class ContactMapDataset(Dataset):
     """
@@ -71,7 +74,7 @@ class ContactMapDataset(Dataset):
         constant_num_node_features: int = 20,
         window_size: int = 1,
         horizon: int = 1,
-        ntrain: int = 250000
+        n_frames: int = 250000
     ):
         """
         Parameters
@@ -92,8 +95,8 @@ class ContactMapDataset(Dataset):
             Number of timesteps considered for prediction.
         horizon : int, default=1
             How many time steps to predict ahead.
-        ntrain: int, default=250000
-            Maximum number of training examples
+        n_frames: int, default=250000
+            Maximum number of trajectory frames to read
         Raises
         ------
         ValueError
@@ -109,11 +112,11 @@ class ContactMapDataset(Dataset):
 
         with h5py.File(path, "r", libver="latest", swmr=False) as f:
             # COO formated ragged arrays
-            self.edge_indices = np.array(f[edge_index_dset_name][:ntrain])
-            self.edge_attrs = np.array(f[edge_attr_dset_name][:ntrain])
+            self.edge_indices = np.array(f[edge_index_dset_name][:n_frames])
+            self.edge_attrs = np.array(f[edge_attr_dset_name][:n_frames])
             # get the rmsd nums
             try:
-                self.rmsd_values = np.array(f['rmsd'][:ntrain])
+                self.rmsd_values = np.array(f['rmsd'][:n_frames])
             except ValueError as e:
                 print("Not able to load rmsd values...")
                 self.rmsd_values = []
@@ -222,7 +225,7 @@ class ContactMapNewDataset(Dataset):
         augment_by_rotating180_prob: float = 0,
         augment_by_translating_prob: float = 0,
         augment_with_noise_mu: float = 0,
-        ntrain: int = 250000,
+        frames_range: Tuple[int, int] = (0, 250000),
         frame_step: int = 1
     ):
         """
@@ -251,9 +254,9 @@ class ContactMapNewDataset(Dataset):
         augment_by_translating_prob :float, default=0
             With a probability augment_by_rotating180_prob, rotate x/y/z by 180 degrees about the denter of the box
         augment_with_noise_mu :float, default=0
-            Add Gaussian noise with mean = augment_with_noise_mu and standard deviation = 1 to each coordinate independently
-        ntrain: int, default=250000
-            Maximum number of training examples
+            Add Gaussian noise with mean = 0, standard_deviation = augment_with_noise_mu to each coordinate independently
+        frames: tuple(int, int), default=(0, 250000)
+            Start and end frame numbers to be read from the trajectory
         frame_step: int, default=1
             Number of frames in the raw trajectory between frames chosen for the window, i.e., using window_size frames every frame_step frames, predict the frame that comes after frame_step frames
         Raises
@@ -268,22 +271,24 @@ class ContactMapNewDataset(Dataset):
         self._constant_num_node_features = constant_num_node_features
         self.window_size = window_size
         self.horizon = horizon
-        # TODO: move augmentations to training routine?
+        # TODO: move augmentations to training routine
         self.augment_by_reversing_prob = augment_by_reversing_prob
         self.augment_by_rotating180_prob = augment_by_rotating180_prob
         self.augment_by_translating_prob = augment_by_translating_prob
         self.augment_with_noise_mu = augment_with_noise_mu
         self.frame_step = frame_step
+        self.n_aug = 0
         # TODO: How were these edges chosen? Radial cutoff or Gaussian?
         # TODO: a graph attention mechanism will allow the relevancy of edges to be learnt
         with h5py.File(path, "r", libver="latest", swmr=False) as f:
             # COO formated ragged arrays
-            self.edge_indices = np.array(f[edge_index_dset_name][:ntrain])
-            self.node_attrs = np.array(f[edge_attr_dset_name][:ntrain])
+            print(f'{path} has {len(f[edge_index_dset_name])} frames')
+            self.edge_indices = np.array(f[edge_index_dset_name][frames_range[0]:frames_range[1]])
+            self.node_attrs = np.array(f[edge_attr_dset_name][frames_range[0]:frames_range[1]])
             print(f'self.edge_indices: {self.edge_indices.shape}, self.node_attrs: {self.node_attrs .shape}')
             # get the rmsd nums
             try:
-                self.rmsd_values = np.array(f['rmsd'][:ntrain])
+                self.rmsd_values = np.array(f['rmsd'][frames_range[0]:frames_range[1]])
             except ValueError as e:
                 print("Not able to load rmsd values...")
                 self.rmsd_values = []
@@ -328,7 +333,10 @@ class ContactMapNewDataset(Dataset):
             # Reverse trajectory: Given window_size frames after idx, predict frame idx
             pred_idx = idx
             frame_for_edge_attr = idx + (self.window_size + self.horizon - 1) * self.frame_step
-            x_position = np.flip(self.node_attrs[idx + self.horizon * self.frame_step: idx + (self.window_size + self.horizon) * self.frame_step: self.frame_step], [0]) # reverse time order
+            x_position = np.ascontiguousarray(
+                np.flip(self.node_attrs[idx + self.horizon * self.frame_step: idx + (self.window_size + self.horizon) * self.frame_step: self.frame_step], 
+                        [0])) # reverse time order
+            self.n_aug += 1
         else:
             # Forward trajectory: Given window_size frames starting from idx, predict the subsequent frame 
             pred_idx = idx + (self.window_size + self.horizon - 1) * self.frame_step
@@ -341,8 +349,23 @@ class ContactMapNewDataset(Dataset):
 
         # Get the raw xyz positions (num_nodes, 3) at the prediction index
         y = self.node_attrs[pred_idx]
-        node_attr_local = self.node_attrs[frame_for_edge_attr]
+        node_attr_local = self.node_attrs[frame_for_edge_attr].copy()
+        if (self.augment_by_translating_prob > 0) and (random.random() < self.augment_by_translating_prob):
+            self.n_aug += 1
+            translation = np.random.normal(size=[3]) # mean=0, std=1
+            x_position += translation
+            y += translation
+            node_attr_local += translation
+
+        if self.augment_with_noise_mu != 0:
+            self.n_aug += 1
+            x_position += np.random.normal(loc = 0, scale = self.augment_with_noise_mu, size = x_position.shape)
+            node_attr_local += np.random.normal(loc = 0, scale = self.augment_with_noise_mu, size = node_attr_local.shape)
+            # Apply noise to inputs not the output:
+            #y += np.random.normal(loc = 0, scale = self.augment_with_noise_mu, size = y.shape)
+
         if (self.augment_by_rotating180_prob > 0):
+            # TODO: Need SE(3) transformer or other rotation equivariant model 
             # TODO: implement more general rotation, uniformly sampling the unit sphere
             rot_mat = np.array([1, 1, 1])
             if (random.random() < self.augment_by_rotating180_prob):
@@ -353,21 +376,19 @@ class ContactMapNewDataset(Dataset):
                 rot_mat *= [-1, 1, -1]
             if (random.random() < self.augment_by_rotating180_prob):
                 # rotate 180 degrees about z-axis            
-                rot_mat *= [1, -1, -1]
-            x_position *= rot_mat
-            y *= rot_mat
-            node_attr_local *= rot_mat
-
-        if (self.augment_by_translating_prob > 0) and (random.random() < self.augment_by_translating_prob):
-            translation = np.random.normal(size=[3])
-            x_position += translation
-            y += translation
-            node_attr_local += translation
-
-        if self.augment_with_noise_mu != 0:
-            x_position += np.random.normal(loc = self.augment_with_noise_mu, size = x_position.shape)
-            y += np.random.normal(loc = self.augment_with_noise_mu, size = y.shape)
-            node_attr_local += np.random.normal(loc = self.augment_with_noise_mu, size = node_attr_local.shape)
+                rot_mat *= [-1, -1, 1]
+            if not np.array_equal(rot_mat, np.array([1, 1, 1])):
+                self.n_aug += 1
+                #print(rot_mat)
+                #print('x', x_position.shape, x_position[0])
+                x_position *= rot_mat
+                #print('x_', x_position.shape, x_position[0])
+                #print('y', y.shape, y[0])
+                y *= rot_mat
+                #print('y_', y.shape, y[0])
+                #print('node_attr_local', node_attr_local.shape, node_attr_local[0])
+                node_attr_local *= rot_mat
+                #print('node_attr_local_', node_attr_local.shape, node_attr_local[0])
 
         # Get edge attributes with shape (num_edges, num_edge_features)
         # TODO: edge attribute should be bond type, coordinates should be node attributes; alternatively, try using internal coordinates, radial basis functions, and other standard tricks!

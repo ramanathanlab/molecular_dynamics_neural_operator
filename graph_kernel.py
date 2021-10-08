@@ -69,14 +69,7 @@ def train_valid_split(
         train_dataset = Subset(dataset, indices[:train_length])
         valid_dataset = Subset(dataset, indices[train_length:])
     else:
-        raise ValueError(f"Invalid method: {method}.")
-    
-    # Augmentation happens only during training:
-    train_dataset.augment_by_reversing_prob = augment_by_reversing_prob
-    train_dataset.augment_by_rotating180_prob = augment_by_rotating180_prob
-    train_dataset.augment_by_translating_prob = augment_by_translating_prob
-    train_dataset.augment_with_noise_mu = augment_with_noise_mu
-    
+        raise ValueError(f"Invalid method: {method}.")   
     train_loader = DataListLoader(train_dataset, **kwargs)
     valid_loader = DataListLoader(valid_dataset, **kwargs)
     return train_loader, valid_loader, train_dataset, valid_dataset
@@ -182,7 +175,7 @@ class NNConv_old(MessagePassing):
         self.out_channels = out_channels
         self.net = net
         self.aggr = aggr
-
+        print(f'NNConv_old kernel: {self.net}')
         if root_weight:
             self.root = nn.Parameter(torch.Tensor(in_channels, out_channels))
         else:
@@ -264,7 +257,8 @@ class KernelNN(torch.nn.Module):
             num_embeddings: int = 20,
             embedding_dim: int = 4,
             x_position_dim: int = 3,
-            num_nodes: int = 28
+            num_nodes: int = 28,
+            window_size: int = 10
     ) -> None:
         super(KernelNN, self).__init__()
         self.depth = depth
@@ -274,7 +268,7 @@ class KernelNN(torch.nn.Module):
         self.num_nodes = num_nodes
         self.lstm = nn.LSTM(x_position_dim, x_position_dim)
         self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
-
+        self.window_size = window_size
         self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
         self.fc1 = torch.nn.Linear(in_width, width)
@@ -287,14 +281,16 @@ class KernelNN(torch.nn.Module):
 
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
-        x = data.x_position.reshape(-1, args.window_size, self.num_nodes, 3)
+        x = data.x_position.reshape(-1, self.window_size, self.num_nodes, 3)
         x = torch.swapaxes(x, 0, 1)
         # process the window of previous frames
         hidden = (torch.randn(1, self.num_nodes, 3).cuda(),
                   torch.randn(1, self.num_nodes, 3).cuda())
         for i in x:
+            #print(x.shape)
             x, hidden = self.lstm(i, hidden)
         x = self.lstm_fc(x)
+        #print('xc', x.shape)
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
@@ -303,23 +299,493 @@ class KernelNN(torch.nn.Module):
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
         x = torch.cat((emb, x), dim=1)
-
+        #print('xemb', x.shape)
         x = F.relu(self.fc1(x))
         for k in range(self.depth):
+            #print(k, x.shape)
             x = F.relu(self.conv1(x, edge_index, edge_attr))
         for k in range(self.depth):
+            #print(k, x.shape)
             x = F.relu(self.conv2(x, edge_index, edge_attr))
         if return_latent:
             latent_dim = torch.clone(x)
         x = self.fc2(x)
+        #print('xf', x.shape)
+        #sys.exit(0)
+        if return_latent:
+            return [x, latent_dim]
+        else:
+            return x
 
+# TODO: 
+# evaluate GNN separately.. may be keep all 10 frames till the very end
+# modify edge and node features
+# use union of edges from all 10 frames (or use all 28^2 edges?)
+# Skip LSTM and do GNN on 10 frame data?
+# 
+
+class KernelNNFixed(torch.nn.Module):
+    def __init__(
+            self,
+            width: int,
+            ker_width: int,
+            depth: int,
+            ker_in: int,
+            in_width: int = 1,
+            out_width: int = 1,
+            num_embeddings: int = 20,
+            embedding_dim: int = 4,
+            x_position_dim: int = 3,
+            num_nodes: int = 28,
+            window_size: int = 10,
+            lstm_num_layers: int = 1 #TODO: make it a param
+    ) -> None:
+        super(KernelNNFixed, self).__init__()
+        self.depth = depth
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.x_position_dim = x_position_dim
+        self.num_nodes = num_nodes
+        self.lstm = nn.LSTM(num_nodes * x_position_dim, num_nodes * x_position_dim, num_layers=lstm_num_layers)
+        #self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
+        self.window_size = window_size
+        self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
+        self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
+        self.conv2 = NNConv_old(width, width, kernel, aggr="mean")
+        self.fc0 = torch.nn.Linear(num_nodes * x_position_dim, num_nodes * x_position_dim) #TODO: could expand to num_frames
+        #self.fc1 = torch.nn.Linear(x_position_dim * window_size, x_position_dim)
+        self.fc1 = torch.nn.Linear(window_size * num_nodes * x_position_dim, num_nodes * x_position_dim) #width)
+        #self.fc1 = torch.nn.Linear(x_position_dim * window_size, x_position_dim)
+
+        self.fc2 = torch.nn.Linear(width + embedding_dim, width)
+        self.fc3 = torch.nn.Linear(num_nodes * x_position_dim, num_nodes * x_position_dim)#width, out_width)
+        self.lstm_num_layers = lstm_num_layers
+
+    def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
+        edge_index, edge_attr = data.edge_index, data.edge_attr
+        x = data.x_position #.reshape(-1, self.window_size, self.num_nodes, 3)
+        #print('x0', x.shape) # x0 torch.Size([2560, 28, 3])
+        x = x.reshape(-1, self.window_size, x.shape[-2] * x.shape[-1])
+        #print('x1', x.shape) # x1 torch.Size([256, 10, 84])
+        x = torch.swapaxes(x, 0, 1)
+        #print('x2', x.shape) # x2 torch.Size([10, 256, 84])
+        x = self.fc0(x)
+        #print('x3', x.shape) # x3 torch.Size([10, 256, 84])
+        self.lstm.flatten_parameters()
+        hidden = (
+            torch.zeros(self.lstm_num_layers, x.shape[-2], x.shape[-1]).cuda(),
+            torch.zeros(self.lstm_num_layers, x.shape[-2], x.shape[-1]).cuda()
+        )          
+        x, hidden = self.lstm(x, hidden)
+        #print('x3_', x.shape) # x3_ torch.Size([10, 256, 84])
+
+        if True:
+            #print('x3b', x.shape)
+            x = torch.swapaxes(x, 0, 1) # 256, 10, 84
+            #print('x3c', x.shape)
+            x = x.reshape(x.shape[0], x.shape[1], -1, self.x_position_dim) # 256, 10, 28, 3
+            #print('x3d', x.shape)
+            x = torch.swapaxes(x, 1, 2) # 256, 28, 10, 3
+            #print('x3e', x.shape)
+            x = x.reshape(-1, self.x_position_dim * self.window_size)
+            #print('x3f', x.shape) # x3f torch.Size([7168, 30])
+            #x = self.fc1(x)
+            #print('x4', x.shape)
+        if False:
+            emb = self.emb(data.x_aminoacid)
+            x = x.reshape(emb.shape[0], -1)
+            #print('x4b', x.shape) # x4b torch.Size([7168, 128])
+            # print("data.x_aminoacid", data.x_aminoacid.shape)
+            # print("data.x_position:", data.x_position.shape)
+            x = torch.cat((emb, x), dim=1)
+            #print('xemb', x.shape) # xemb torch.Size([7168, 132])
+            x = torch.swapaxes(x, 0, 1).reshape(-1, self.window_size * self.x_position_dim * self.num_nodes)
+            x = self.fc1(x) #F.relu(x)) # reduces 840 to 84
+            #x = F.relu(self.fc2(x))
+
+        if True:
+            for k in range(self.depth):
+                #print(k, x.shape)
+                x = F.relu(self.conv1(x, edge_index, edge_attr))
+            for k in range(self.depth):
+                #print(k, x.shape)
+                x = F.relu(self.conv2(x, edge_index, edge_attr))
+            if return_latent:
+                latent_dim = torch.clone(x)
+        #print('xf_', x.shape) # xf_ torch.Size([256, 84])
+        x = self.fc3(x) #F.relu(x))
+        #print('xf__', x.shape)
+        x = x.reshape(-1, self.x_position_dim)
+        #print('xf', x.shape)
         if return_latent:
             return [x, latent_dim]
         else:
             return x
 
 
+class BasicGNN(torch.nn.Module):
+    def __init__(
+            self,
+            width: int,
+            ker_width: int,
+            depth: int,
+            ker_in: int,            
+            in_width: int = 1, # total number of node features: 3 coords x 10 frames + 4 embedding
+            out_width: int = 1,
+            num_embeddings: int = 20,
+            embedding_dim: int = 4,
+            x_position_dim: int = 3,
+            num_nodes: int = 28,
+            window_size: int = 10
+    ) -> None:
+        super(BasicGNN, self).__init__()
+        self.depth = depth
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.x_position_dim = x_position_dim
+        self.num_nodes = num_nodes
+        self.window_size = window_size
+        self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        self.fc1 = torch.nn.Linear(in_width, width)
+        kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
+        #kernel = DenseNet([ker_in, width ** 2], torch.nn.ReLU)
+        self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
+        #self.conv2 = NNConv_old(width, width, kernel, aggr="mean")
+        #self.fcd = torch.nn.Linear(width, width)
+
+        self.fc2 = torch.nn.Linear(width, out_width)
+
+    def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
+        edge_index, edge_attr = data.edge_index, data.edge_attr
+        x = data.x_position.reshape(-1, self.window_size, self.num_nodes, 3)
+        x = torch.swapaxes(x, 1, 2)
+        emb = self.emb(data.x_aminoacid)
+        x = x.reshape(emb.shape[0], -1)
+        x = torch.cat((emb, x), dim=1)
+        x = F.relu(self.fc1(x))
+        for k in range(self.depth):
+            #x = self.fcd(F.relu(self.conv1(x, edge_index, edge_attr)))
+            x = F.relu(self.conv1(x, edge_index, edge_attr))
+        #for k in range(self.depth):
+        #    x = F.relu(self.conv2(x, edge_index, edge_attr))
+        if return_latent:
+            latent_dim = torch.clone(x)
+        x = self.fc2(x)
+        if return_latent:
+            return [x, latent_dim]
+        else:
+            return x
+
+
+class BasicLSTM(torch.nn.Module):
+    def __init__(
+            self,
+            x_position_dim: int = 3,
+            num_layers: int = 10, # 2,3,4,5,10 produce roughly same result; 1 is worse (for frame_step 100). For frame_step=1, num_layers=1 is best
+            window_size: int = 10,
+    ) -> None:
+        super(BasicLSTM, self).__init__()
+        self.lstm = nn.LSTM(input_size=x_position_dim, hidden_size=x_position_dim, num_layers=num_layers)
+        self.fc0 = torch.nn.Linear(x_position_dim, x_position_dim)
+        self.fc1 = torch.nn.Linear(x_position_dim * window_size, x_position_dim)
+        self.num_layers = num_layers
+        self.x_position_dim = x_position_dim
+        self.window_size = window_size
+
+
+    def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
+        x = data.x_position
+        #x = x.reshape(-1, args.window_size, 1, x.shape[-2] * x.shape[-1])
+        x = x.reshape(-1, self.window_size, x.shape[-2] * x.shape[-1])
+        x = torch.swapaxes(x, 0, 1)
+        x = self.fc0(x)
+        self.lstm.flatten_parameters()
+        #for x_i in x:
+        #    xx, hidden = self.lstm(x_i, hidden)
+        #print('x', x.shape)
+        hidden = (torch.zeros(self.num_layers, x.shape[-2], x.shape[-1]).cuda(),
+                  torch.zeros(self.num_layers, x.shape[-2], x.shape[-1]).cuda())
+        xx, hidden = self.lstm(x, hidden)
+        #print('xx', xx.shape)
+        x = self.fc1(torch.swapaxes(xx, 0, 1).reshape(-1, self.x_position_dim * self.window_size))
+        x = x.reshape(-1, 3)   
+        if return_latent:
+            return [x, torch.clone(x)]
+        else:
+            return x
+
+
+class GNO(torch.nn.Module):
+    """current best"""
+    def __init__(
+            self,
+            width: int,
+            ker_width: int,
+            depth: int,
+            ker_in: int,            
+            in_width: int = 1, # total number of node features: 3 coords x 10 frames + 4 embedding
+            out_width: int = 1,
+            num_embeddings: int = 20,
+            embedding_dim: int = 4,
+            x_position_dim: int = 3,
+            num_nodes: int = 28,
+            window_size: int = 10,
+            num_layers: int = 10, #10, # 2,3,4,5,10 produce roughly same result; 1 is worse (for frame_step 100). For frame_step=1, num_layers=1 is best
+            #mlp_num_layers: int = 2,
+            #mlp_width: int = 128
+    ) -> None:
+        super(GNO, self).__init__()
+        self.depth = depth
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.x_position_dim = x_position_dim
+        self.num_nodes = num_nodes
+        self.num_layers = num_layers
+        self.window_size = window_size
+        self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        self.fc1 = torch.nn.Linear(in_width, width)
+        kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU, normalize=False)
+        #kernel = DenseNet([ker_in, width ** 2], torch.nn.ReLU)
+        self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
+        #self.conv2 = NNConv_old(width, width, kernel, aggr="mean")
+        #self.fcd = torch.nn.Linear(width, width)
+        self.fc2 = torch.nn.Linear(width, out_width)
+        lstm_width = num_nodes * x_position_dim
+        self.lstm = nn.LSTM(input_size=lstm_width, hidden_size=lstm_width, num_layers=num_layers)
+        self.lstm_fc0 = torch.nn.Linear(lstm_width, lstm_width)
+        self.lstm_fc1 = torch.nn.Linear(lstm_width * window_size, lstm_width)        
+        #self.dropout = nn.Dropout(p=0.1)
+        #self.fc_final = torch.nn.Linear(self.x_position_dim * 2, x_position_dim)
+        #self.fc_final = DenseNet([self.x_position_dim * 2] + [mlp_width] * (mlp_num_layers - 1) + [x_position_dim], torch.nn.ReLU, out_nonlinearity=None, normalize=True)
+
+
+    def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
+        #x_position = self.dropout(data.x_position)
+        x_position = data.x_position
+        x1 = x_position
+        x1 = x1.reshape(-1, self.window_size, x1.shape[-2] * x1.shape[-1])
+        x1 = torch.swapaxes(x1, 0, 1)
+        x1 = self.lstm_fc0(x1)
+        self.lstm.flatten_parameters()
+        hidden = (torch.zeros(self.num_layers, x1.shape[-2], x1.shape[-1]).cuda(),
+                  torch.zeros(self.num_layers, x1.shape[-2], x1.shape[-1]).cuda())
+        x1, hidden = self.lstm(x1, hidden)
+        x1 = torch.swapaxes(x1, 0, 1).reshape(-1, self.num_nodes * self.x_position_dim * self.window_size)
+        #x1 = self.dropout(x1)
+        x1 = self.lstm_fc1(x1)
+        #print('x1', x1.shape) # x1 torch.Size([256, 84])
+        x1 = x1.reshape(-1, 3)   
+
+        edge_index, edge_attr = data.edge_index, data.edge_attr
+        x2 = x_position.reshape(-1, self.window_size, self.num_nodes, 3)
+        x2 = torch.swapaxes(x2, 1, 2)
+        emb = self.emb(data.x_aminoacid)
+        x2 = x2.reshape(emb.shape[0], -1)
+        x2 = torch.cat((emb, x2), dim=1)
+        #x2 = self.dropout(x2)
+        x2 = F.relu(self.fc1(x2))
+        for k in range(self.depth):
+            x2 = F.relu(self.conv1(x2, edge_index, edge_attr))
+        #for k in range(self.depth):
+        #    x = F.relu(self.conv2(x, edge_index, edge_attr))
+        if return_latent:
+            latent_dim = torch.clone(x)
+        x2 = self.fc2(x2)
+        #print('x2_', x2.shape) # x2_ torch.Size([7168, 3])
+        #x2 = x2.reshape(-1, self.num_nodes * self.x_position_dim)
+        #print('x2', x2.shape) # x2 torch.Size([256, 84])
+        
+        #x = torch.cat((x1, x2), dim=1)
+        #x = self.dropout(x)
+        #print('x', x.shape) #x torch.Size([256, 168])
+        #x = self.fc_final(x)
+        #print('xf', x.shape) #xf torch.Size([256, 84])
+        x = (x1 + x2) / 2
+        #x = x1 + x2
+        x = x.reshape(-1, self.x_position_dim)
+        #sys.exit(0)
+        if return_latent:
+            return [x, latent_dim]
+        else:
+            return x
+
+
+# TODO: try reversing order: GNN followed by LSTM
+class GNO_old(torch.nn.Module):
+    def __init__(
+            self,
+            width: int,
+            ker_width: int,
+            depth: int,
+            ker_in: int,            
+            in_width: int = 1, # total number of node features: 3 coords x 10 frames + 4 embedding
+            out_width: int = 1,
+            num_embeddings: int = 20,
+            embedding_dim: int = 4,
+            x_position_dim: int = 3,
+            num_nodes: int = 28,
+            window_size: int = 10,
+            num_layers: int = 10, # 2,3,4,5,10 produce roughly same result; 1 is worse (for frame_step 100). For frame_step=1, num_layers=1 is best
+    ) -> None:
+        super(GNO, self).__init__()
+        self.depth = depth
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.x_position_dim = x_position_dim
+        self.num_nodes = num_nodes
+        self.num_layers = num_layers
+        self.window_size = window_size
+        self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        self.fc1 = torch.nn.Linear(in_width, width)
+        kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
+        #kernel = DenseNet([ker_in, width ** 2], torch.nn.ReLU)
+        self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
+        #self.conv2 = NNConv_old(width, width, kernel, aggr="mean")
+        #self.fcd = torch.nn.Linear(width, width)
+        self.fc2 = torch.nn.Linear(width, out_width)
+
+        lstm_width = num_nodes * x_position_dim
+        self.lstm = nn.LSTM(input_size=lstm_width, hidden_size=lstm_width, num_layers=num_layers)
+        self.lstm_fc0 = torch.nn.Linear(lstm_width, lstm_width)
+        self.lstm_fc1 = torch.nn.Linear(lstm_width * window_size, lstm_width * window_size)        
+
+    def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
+        x = data.x_position
+        #print('x0', x.shape)
+        x = x.reshape(-1, self.window_size, x.shape[-2] * x.shape[-1])
+        x = torch.swapaxes(x, 0, 1)
+        x = self.lstm_fc0(x)
+        self.lstm.flatten_parameters()
+        hidden = (torch.zeros(self.num_layers, x.shape[-2], x.shape[-1]).cuda(),
+                  torch.zeros(self.num_layers, x.shape[-2], x.shape[-1]).cuda())
+        x, hidden = self.lstm(x, hidden)
+        #print('x0', x.shape) # x0 torch.Size([10, 256, 84])
+        x = self.lstm_fc1(torch.swapaxes(x, 0, 1).reshape(-1, self.num_nodes * self.x_position_dim * self.window_size))
+        #print('x1', x.shape) # x1 torch.Size([256, 840])
+        x = x.reshape(x.shape[0], self.window_size, self.num_nodes, self.x_position_dim)
+        #x = torch.swapaxes(x, 0, 1)
+        #print('x1b', x.shape) # x1b torch.Size([256, 10, 28, 3])
+        #x = x.reshape(x.shape[0], x.shape[1], self.num_nodes, self.x_position_dim)
+        #print('x1c', x.shape)
+        x = torch.swapaxes(x, 1, 2)
+        #print('x1d', x.shape) # x1d torch.Size([256, 28, 10, 3])
+        edge_index, edge_attr = data.edge_index, data.edge_attr
+        #x = data.x_position.reshape(-1, self.window_size, self.num_nodes, 3)
+        #x = torch.swapaxes(x, 1, 2)
+        emb = self.emb(data.x_aminoacid)
+        x = x.reshape(emb.shape[0], -1)
+        #print('x2', x.shape) # x2 torch.Size([7168, 30])
+        x = torch.cat((emb, x), dim=1)
+        #print('x3', x.shape)
+        x = F.relu(self.fc1(x))
+        for k in range(self.depth):
+            #x = self.fcd(F.relu(self.conv1(x, edge_index, edge_attr)))
+            x = F.relu(self.conv1(x, edge_index, edge_attr))
+        #for k in range(self.depth):
+        #    x = F.relu(self.conv2(x, edge_index, edge_attr))
+        if return_latent:
+            latent_dim = torch.clone(x)
+        x = self.fc2(x)
+        #sys.exit(0)
+        if return_latent:
+            return [x, latent_dim]
+        else:
+            return x
+
+
+class GNO_v2(torch.nn.Module):
+    def __init__(
+            self,
+            width: int,
+            ker_width: int,
+            depth: int,
+            ker_in: int,            
+            in_width: int = 1, # total number of node features: 3 coords x 10 frames + 4 embedding
+            out_width: int = 1,
+            num_embeddings: int = 20,
+            embedding_dim: int = 4,
+            x_position_dim: int = 3,
+            num_nodes: int = 28,
+            window_size: int = 10,
+            num_layers: int = 10, # 2,3,4,5,10 produce roughly same result; 1 is worse (for frame_step 100). For frame_step=1, num_layers=1 is best
+    ) -> None:
+        super(GNO, self).__init__()
+        self.depth = depth
+        self.num_embeddings = num_embeddings
+        self.embedding_dim = embedding_dim
+        self.x_position_dim = x_position_dim
+        self.num_nodes = num_nodes
+        self.num_layers = num_layers
+        self.window_size = window_size
+        self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        self.fc1 = torch.nn.Linear(in_width, width)
+        kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
+        #kernel = DenseNet([ker_in, width ** 2], torch.nn.ReLU)
+        self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
+        #self.conv2 = NNConv_old(width, width, kernel, aggr="mean")
+        #self.fcd = torch.nn.Linear(width, width)
+        self.fc2 = torch.nn.Linear(width, self.window_size * self.x_position_dim) #out_width)
+
+        lstm_width = num_nodes * x_position_dim
+        self.lstm = nn.LSTM(input_size=lstm_width, hidden_size=lstm_width, num_layers=num_layers)
+        self.lstm_fc0 = torch.nn.Linear(lstm_width, lstm_width)
+        self.lstm_fc1 = torch.nn.Linear(lstm_width * window_size, lstm_width)        
+
+    def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
+        x = data.x_position
+
+        # GNN first
+        #print('x0', x.shape) #torch.Size([2560, 28, 3])
+        edge_index, edge_attr = data.edge_index, data.edge_attr
+        x = data.x_position.reshape(-1, self.window_size, self.num_nodes, 3)
+        #print('x1', x.shape) # x1 torch.Size([256, 10, 28, 3])
+        x = torch.swapaxes(x, 1, 2)
+        emb = self.emb(data.x_aminoacid)
+        x = x.reshape(emb.shape[0], -1)
+        #print('x2', x.shape) # x2 torch.Size([7168, 30])
+        x = torch.cat((emb, x), dim=1)
+        #print('x3', x.shape) # x3 torch.Size([7168, 34])
+        x = F.relu(self.fc1(x)) # lifts 34 to 128
+        for k in range(self.depth):
+            #x = self.fcd(F.relu(self.conv1(x, edge_index, edge_attr)))
+            x = F.relu(self.conv1(x, edge_index, edge_attr))
+        #for k in range(self.depth):
+        #    x = F.relu(self.conv2(x, edge_index, edge_attr))
+        #print('x4', x.shape) # x4 torch.Size([7168, 128])
+        x = self.fc2(x)
+        #print('x5', x.shape) # x5 torch.Size([7168, 30])
+
+        # Then LSTM
+        x = x.reshape(-1, self.num_nodes, self.window_size, self.x_position_dim)
+        #print('x5b', x.shape) #x5b torch.Size([256, 28, 10, 3])
+        x = torch.swapaxes(x, 1, 2)
+        #print('x5c', x.shape) #x5c torch.Size([256, 10, 28, 3])
+        x = x.reshape(-1, self.window_size, self.num_nodes * self.x_position_dim)
+        #print('x5d', x.shape) #x5d torch.Size([256, 10, 84])
+        x = torch.swapaxes(x, 0, 1)
+        #print('x5e', x.shape) #x5e torch.Size([10, 256, 84])
+        x = self.lstm_fc0(x)
+        self.lstm.flatten_parameters()
+        hidden = (torch.zeros(self.num_layers, x.shape[-2], x.shape[-1]).cuda(),
+                  torch.zeros(self.num_layers, x.shape[-2], x.shape[-1]).cuda())
+        x, hidden = self.lstm(x, hidden)
+        #print('x5f', x.shape) # x5f torch.Size([10, 256, 84])
+        x = torch.swapaxes(x, 0, 1).reshape(-1, self.num_nodes * self.x_position_dim * self.window_size)
+        if return_latent:
+            latent_dim = torch.clone(x)
+        x = self.lstm_fc1(x)
+        #print('x6', x.shape) #  torch.Size([256, 84])
+        x = x.reshape(-1, 3)   
+        if return_latent:
+            return [x, latent_dim]
+        else:
+            return x
+
 class BasicNN(torch.nn.Module):
+    """
+    Linear transformation on all coordinates; no non-linearity!
+    """
     def __init__(
             self,
             in_width: int = 1,
@@ -342,48 +808,57 @@ class BasicNN(torch.nn.Module):
             return x
 
 
-class BasicLSTM(torch.nn.Module):
+class BasicMLP(torch.nn.Module):
+    """
+    Linear transformation on all coordinates, followed by one non-linear activation function
+    """
     def __init__(
             self,
             in_width: int = 1,
             out_width: int = 1,
-            x_position_dim: int = 3,
+            n_layers: int = 2,
+            normalize: bool = True,
+            num_embeddings: int = 20,
+            embedding_dim: int = 4, #4, # no gain in providing AA information!
             num_nodes: int = 28
+            #n_layers: int = 1,
+            #num_nodes: int = 28,
+            #window_size: int = 1
     ) -> None:
-        super(BasicLSTM, self).__init__()
-        #self.in_width = in_width
-        #self.out_width = out_width
-        #self.fc1 = torch.nn.Linear(in_width, out_width)
+        super(BasicMLP, self).__init__()
+        self.in_width = in_width
+        self.out_width = out_width
+        self.kernel = DenseNet([in_width + embedding_dim * num_nodes] * n_layers + [out_width], torch.nn.ReLU, out_nonlinearity=None, normalize=normalize)
+        if embedding_dim > 0:
+            self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        self.embedding_dim = embedding_dim
         self.num_nodes = num_nodes
-        self.lstm = nn.LSTM(x_position_dim, x_position_dim) #in_width, out_width)#x_position_dim)
-        #self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
+
 
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
-        x = data.x_position.reshape(-1, args.window_size, self.num_nodes, 3)
+        #print(data.x_position.shape)
+        x = data.x_position #.reshape(-1, self.in_width) #args.window_size * self.num_nodes * 3
+        x = x.reshape(-1, self.in_width)
         #print('x0', x.shape)
-        x = torch.swapaxes(x, 0, 1)        
-        #x = torch.swapaxes(x, 1, 2)        
-        #print('x1', x.shape)
-        # process the window of previous frames
-        #hidden = (torch.randn(1, self.num_nodes, 3).cuda(),
-        #          torch.randn(1, self.num_nodes, 3).cuda())        
-        #hidden = (torch.randn(1, x.shape[-2], 3).cuda(),
-        #          torch.randn(1, x.shape[-2], 3).cuda())  
-        hidden = (torch.zeros(1, x.shape[-2], 3).cuda(),
-                  torch.zeros(1, x.shape[-2], 3).cuda())  
-        #print('hidden', hidden)
-        for x_i in x:
-            #print(x.shape, x_i.shape)
-            xx, hidden = self.lstm(x_i, hidden)
-        x = xx
-        #x = self.lstm_fc(x)
+        if self.embedding_dim > 0:
+            emb = self.emb(data.x_aminoacid).reshape(-1, self.num_nodes * self.embedding_dim)
+            #print('emb', emb.shape)
+            x = x.reshape(emb.shape[0], -1)
+            #print('x1', x.shape)
+            x = torch.cat((emb, x), dim=1)
+            #print('xemb', x.shape)
+            
+        x = self.kernel(x)
+        #print("x1", x.shape)
         x = x.reshape(-1, 3)
-        #print("x:", x.shape)
+        #print("xf", x.shape)
         #sys.exit(0)        
         if return_latent:
             return [x, torch.clone(x)]
         else:
             return x
+
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -399,8 +874,8 @@ def parse_args():
     parser.add_argument("--width", type=int, default=64)
     parser.add_argument("--out_width", type=int, default=3)
     parser.add_argument("--kernel_width", type=int, default=1024)
-    parser.add_argument("--depth", type=int, default=6)
-    parser.add_argument("--node_features", type=int, default=7)
+    parser.add_argument("--GNN_depth", type=int, default=6)
+    #parser.add_argument("--node_features", type=int, default=7)
     parser.add_argument("--edge_features", type=int, default=6)
     parser.add_argument("--num_embeddings", type=int, default=20)
     parser.add_argument("--embedding_dim", type=int, default=4)
@@ -420,12 +895,14 @@ def parse_args():
     parser.add_argument('--dont-plot_latent', dest='plot_latent', action='store_false')
     parser.add_argument('--dont-generate_movie', dest='generate_movie', action='store_false')
     parser.add_argument("--augment_by_reversing_prob", type=float, default=0)
-    parser.add_argument("--augment_by_rotating180_prob", type=float, default=0)
+    parser.add_argument("--augment_by_rotating180_prob", type=float, default=0) # buggy!
     parser.add_argument("--augment_by_translating_prob", type=float, default=0)
-    parser.add_argument("--augment_with_noise_mu", type=float, default=0)
-    parser.add_argument('--ntrain', type=int, default=250000)
-    parser.add_argument('--model', type=str, default='KernelNN', choices=['KernelNN', 'BasicNN', 'BasicLSTM'])
+    parser.add_argument("--augment_with_noise_mu", type=float, default=0) 
+    parser.add_argument('--n_frames', type=int, default=250000)
+    parser.add_argument('--model', type=str, default='KernelNN', choices=['KernelNN', 'BasicNN', 'BasicLSTM', 'BasicMLP', 'BasicGNN', 'KernelNNFixed', 'GNO'])
     parser.add_argument('--frame_step', type=int, default=1, help="Number of frames in the raw trajectory between frames chosen for the window, i.e., using window_size frames every frame_step frames, predict the frame that comes after frame_step frames")
+    parser.add_argument("--MLP_n_layers", type=int, default=2, help="Number of layers in the BasicMLP")
+    parser.add_argument("--LSTM_n_layers", type=int, default=10, help="Number of layers in the BasicLSTM")
 
     args = parser.parse_args()
 
@@ -439,8 +916,10 @@ def parse_args():
     if wandb.run.name:
         args.run_path = args.run_path / wandb.run.name
     # Make output directory
-    args.run_path.mkdir()
-
+    if not os.path.isdir(args.run_path):
+        args.run_path.mkdir()
+    else:
+        print(f'{args.run_path} exists, over-writing...')
     return args
 
 
@@ -527,31 +1006,26 @@ def make_propagation_movie(model, dataset, device, num_steps=5, starting_points=
         images.append(imageio.imread(filename))
     imageio.mimsave('/tmp/gno_movie/movie.mp4', images)
 
-def train(model, train_loader, optimizer, loss_fn, device):
+def train(
+    model, train_loader, optimizer, loss_fn, device,
+):
     model.train()
     avg_loss = 0.0
     avg_mse = 0.0
     mse_fn = torch.nn.MSELoss()
     for batch in tqdm(train_loader):
         # batch = batch.to(device, non_blocking=args.non_blocking)
-
-        optimizer.zero_grad()
-
         # TODO: normally augmentations would go here, after a normal batch is produced
-
+        optimizer.zero_grad()
         out = model(batch)
-
         # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
         # mse.backward()
         # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
         # loss.backward()
-
         concat_y = torch.cat([data.y for data in batch]).to(out.device)
         l2 = loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
         l2.backward()
-
         mse_loss = mse_fn(out, concat_y)
-
         optimizer.step()
         avg_loss += l2.item()
         avg_mse += mse_loss.item()
@@ -574,7 +1048,7 @@ def validate(model, valid_loader, loss_fn, device):
             concat_y = torch.cat([data.y for data in batch]).to(out.device)
             avg_loss += loss_fn(
                 out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1)
-            ).item()
+            ).item() # average loss per batch -- still a function of batch size
             avg_mse += mse_fn(out, concat_y)
     avg_loss /= len(valid_loader)
     avg_mse /= len(valid_loader)
@@ -589,26 +1063,46 @@ def main():
     torch.set_num_threads(1 if args.num_data_workers == 0 else args.num_data_workers)
 
     # Setup training and validation datasets
-    dataset = ContactMapNewDataset(args.data_path, window_size=args.window_size, ntrain=args.ntrain, frame_step=args.frame_step)
+    # dataset = ContactMapDataset(args.data_path, window_size=args.window_size, n_frames=args.n_frames, frame_step=args.frame_step)
+    # train_loader, valid_loader, train_dataset, valid_dataset = train_valid_split(
+    #     dataset,
+    #     args.split_pct,
+    #     method="partition",
+    #     batch_size=args.batch_size,
+    #     shuffle=True,
+    #     drop_last=True,
+    #     pin_memory=True,
+    #     num_workers=args.num_data_workers,
+    #     prefetch_factor=args.prefetch_factor,
+    #     persistent_workers=args.persistent_workers,
+    #     augment_by_reversing_prob=args.augment_by_reversing_prob,
+    #     augment_by_rotating180_prob=args.augment_by_rotating180_prob,
+    #     augment_by_translating_prob=args.augment_by_translating_prob,
+    #     augment_with_noise_mu=args.augment_with_noise_mu
+    # )
 
-    print("Created dataset")
+    train_length = int(args.n_frames * args.split_pct)
+    valid_length = args.n_frames - train_length
 
-    train_loader, valid_loader, train_dataset, valid_dataset = train_valid_split(
-        dataset,
-        args.split_pct,
-        method="partition",
-        batch_size=args.batch_size,
-        shuffle=True,
-        drop_last=True,
-        pin_memory=True,
-        num_workers=args.num_data_workers,
-        prefetch_factor=args.prefetch_factor,
-        persistent_workers=args.persistent_workers,
+    train_dataset = ContactMapNewDataset(
+        args.data_path, window_size=args.window_size, frames_range=[0, train_length], frame_step=args.frame_step,
         augment_by_reversing_prob=args.augment_by_reversing_prob,
         augment_by_rotating180_prob=args.augment_by_rotating180_prob,
         augment_by_translating_prob=args.augment_by_translating_prob,
         augment_with_noise_mu=args.augment_with_noise_mu
     )
+    print(train_dataset)
+    valid_dataset = ContactMapNewDataset(
+        args.data_path, window_size=args.window_size, frames_range=[train_length, args.n_frames], frame_step=args.frame_step,
+        augment_by_reversing_prob=0,
+        augment_by_rotating180_prob=0,
+        augment_by_translating_prob=0,
+        augment_with_noise_mu=0
+    )
+    print(valid_dataset)
+    print("Created dataset")
+    train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=args.num_data_workers, prefetch_factor=args.prefetch_factor, persistent_workers=args.persistent_workers)
+    valid_loader = DataListLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=args.num_data_workers, prefetch_factor=args.prefetch_factor, persistent_workers=args.persistent_workers)
 
     print("Split training and validation sets")
 
@@ -617,30 +1111,84 @@ def main():
 
     # Setup model, optimizer, loss function and scheduler
     if args.model == 'KernelNN':
+        node_features = args.out_width + args.embedding_dim
         model = DataParallel(KernelNN(
             args.width,
             args.kernel_width,
-            args.depth,
+            args.GNN_depth,
             args.edge_features,
-            args.node_features,
+            node_features,
             args.out_width,
             args.num_embeddings,
             args.embedding_dim,
-            num_nodes=dataset.num_nodes
+            num_nodes=train_dataset.num_nodes,
+            window_size=args.window_size
         )).to(device)
+    elif args.model == 'KernelNNFixed':
+        node_features = args.out_width + args.embedding_dim
+        model = DataParallel(KernelNNFixed(
+            args.width,
+            args.kernel_width,
+            args.GNN_depth,
+            args.edge_features,
+            node_features,
+            args.out_width,
+            args.num_embeddings,
+            args.embedding_dim,
+            num_nodes=train_dataset.num_nodes,
+            window_size=args.window_size
+        )).to(device)
+    elif args.model == 'BasicGNN':
+        node_features = args.out_width * args.window_size + args.embedding_dim
+        model = DataParallel(BasicGNN(
+            args.width,
+            args.kernel_width,
+            args.GNN_depth,
+            args.edge_features,
+            node_features,
+            args.out_width,
+            args.num_embeddings,
+            args.embedding_dim,
+            num_nodes=train_dataset.num_nodes,
+            window_size=args.window_size
+        )).to(device)    
+    elif args.model == 'GNO':
+        node_features = args.out_width * args.window_size + args.embedding_dim
+        #node_features = args.out_width + args.embedding_dim
+        model = DataParallel(GNO(
+            args.width,
+            args.kernel_width,
+            args.GNN_depth,
+            args.edge_features,
+            node_features,
+            args.out_width,
+            args.num_embeddings,
+            args.embedding_dim,
+            num_nodes=train_dataset.num_nodes,
+            window_size=args.window_size,
+            num_layers=args.LSTM_n_layers,
+        )).to(device)    
     elif args.model == 'BasicLSTM':
         model = DataParallel(BasicLSTM(
-            args.window_size * dataset.num_nodes * 3,
-            dataset.num_nodes * args.out_width,
-            num_nodes=dataset.num_nodes
+            train_dataset.num_nodes * 3,
+            num_layers=args.LSTM_n_layers,
+            window_size=args.window_size
         )).to(device)        
-    else:
+    elif args.model == 'BasicMLP':
+        model = DataParallel(BasicMLP(
+            args.window_size * train_dataset.num_nodes * 3,
+            train_dataset.num_nodes * args.out_width,
+            n_layers = args.MLP_n_layers
+        )).to(device)        
+    elif args.model == 'BasicNN':
         model = DataParallel(BasicNN(
-            args.window_size * dataset.num_nodes * 3,
-            dataset.num_nodes * args.out_width
+            args.window_size * train_dataset.num_nodes * 3,
+            train_dataset.num_nodes * args.out_width
         )).to(device)
+    else:
+        raise RuntimeError(f'Model {args.model} not supported')
 
-    print("Initialized model")
+    print("Initialized model", model)
 
     optimizer = torch.optim.Adam(
         model.parameters(), lr=args.lr, weight_decay=args.weight_decay
@@ -648,7 +1196,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer, step_size=args.scheduler_step, gamma=args.scheduler_gamma
     )
-    loss_fn = LpLoss(size_average=False)
+    loss_fn = LpLoss(size_average=False) # set size_average=True to get loss per example
 
     print("Started training")
 
@@ -672,7 +1220,7 @@ def main():
                     latent_spaces.append(latent)
 
                 latent_spaces = np.array(latent_spaces)
-                color_dict = {'RMSD': dataset.rmsd_values[133000:143000]}
+                color_dict = {'RMSD': train_dataset.rmsd_values[133000:143000]}
                 out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
                 html_plot = wandb.Html(out_html['RMSD'], inject=False)
         else:
@@ -686,6 +1234,8 @@ def main():
             f"\tTime: {default_timer() - time}"
             f"\ttrain_loss: {avg_train_loss}"
             f"\tvalid_loss: {avg_valid_loss}"
+            f"\ntrain_dataset: {train_dataset.n_aug}"
+            f"\nvalid_dataset: {valid_dataset.n_aug}"
         )
         sys.stdout.flush()
         # Save the model with the best validation loss
@@ -706,3 +1256,9 @@ if __name__ == "__main__":
     print(args)
     wandb.config.update(args)
     main()
+
+# TODO:
+# add batchnorm to kernel
+# add all edges to GNN
+# augmentation
+# GeLU
