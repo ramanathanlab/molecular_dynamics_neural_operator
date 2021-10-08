@@ -252,7 +252,7 @@ class KernelNN(torch.nn.Module):
             out_width: int = 1,
             num_embeddings: int = 20,
             embedding_dim: int = 4,
-            x_position_dim: int = 3
+            x_position_dim: int = 4
     ) -> None:
         super(KernelNN, self).__init__()
         self.depth = depth
