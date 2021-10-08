@@ -276,7 +276,7 @@ class KernelNN(torch.nn.Module):
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
         edge_index, edge_attr = data.edge_index, data.edge_attr
         x = data.x_position.reshape(-1, args.window_size, args.num_residues, 3)
-        x, hidden = self.lstm(data.x_position)
+        x, hidden = self.lstm(x)
         # take the last time slice, we don't want all of them
         x = x[-args.batch_size:]
         x = self.lstm_fc(x)
