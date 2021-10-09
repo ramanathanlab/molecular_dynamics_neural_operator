@@ -25,15 +25,13 @@ import os
 import imageio
 import pdb
 import sys
+import h5py
 
 from dataset import ContactMapDataset, PairData, ContactMapNewDataset
 
 from mdlearn.utils import log_latent_visualization
 
 EPS = 1e-15
-
-PathLike = Union[str, Path]
-
 
 def train_valid_split(
         dataset: Dataset, split_pct: float = 0.8, method: str = "random", 
@@ -575,6 +573,7 @@ class GNO(torch.nn.Module):
         x1, hidden = self.lstm(x1, hidden)
         x1 = torch.swapaxes(x1, 0, 1).reshape(-1, self.num_nodes * self.x_position_dim * self.window_size)
         #x1 = self.dropout(x1)
+        #print('x1_', x1.shape)  # [256, 2160]
         x1 = self.lstm_fc1(x1)
         #print('x1', x1.shape) # x1 torch.Size([256, 84])
         x1 = x1.reshape(-1, 3)   
@@ -591,13 +590,12 @@ class GNO(torch.nn.Module):
             x2 = F.relu(self.conv1(x2, edge_index, edge_attr))
         #for k in range(self.depth):
         #    x = F.relu(self.conv2(x, edge_index, edge_attr))
-        if return_latent:
-            latent_dim = torch.clone(x)
+        #print('x2_', x1.shape) # [18432, 3]
+        #sys.exit(0)
         x2 = self.fc2(x2)
         #print('x2_', x2.shape) # x2_ torch.Size([7168, 3])
         #x2 = x2.reshape(-1, self.num_nodes * self.x_position_dim)
-        #print('x2', x2.shape) # x2 torch.Size([256, 84])
-        
+        #print('x2', x2.shape) # x2 torch.Size([256, 84])        
         #x = torch.cat((x1, x2), dim=1)
         #x = self.dropout(x)
         #print('x', x.shape) #x torch.Size([256, 168])
@@ -608,7 +606,7 @@ class GNO(torch.nn.Module):
         x = x.reshape(-1, self.x_position_dim)
         #sys.exit(0)
         if return_latent:
-            return [x, latent_dim]
+            return [x, x]
         else:
             return x
 
@@ -821,7 +819,7 @@ class BasicMLP(torch.nn.Module):
             n_layers: int = 2,
             normalize: bool = True,
             num_embeddings: int = 20,
-            embedding_dim: int = 4, #4, # no gain in providing AA information!
+            embedding_dim: int = 0, #4, # no gain in providing AA information!
             num_nodes: int = 28
             #n_layers: int = 1,
             #num_nodes: int = 28,
@@ -881,7 +879,8 @@ def parse_args():
     parser.add_argument("--edge_features", type=int, default=6)
     parser.add_argument("--num_embeddings", type=int, default=20)
     parser.add_argument("--embedding_dim", type=int, default=4)
-    parser.add_argument("--split_pct", type=float, default=0.8)
+    parser.add_argument("--split_pct_train", type=float, default=0.8)
+    parser.add_argument("--split_pct_valid", type=float, default=0.2)
     parser.add_argument("--num_data_workers", type=int, default=0)
     parser.add_argument("--prefetch_factor", type=int, default=2)
     parser.add_argument("--persistent_workers", type=str, default="False")
@@ -890,8 +889,11 @@ def parse_args():
     parser.add_argument("--plot_per_epochs", type=int, default=1)
     parser.add_argument("--window_size", type=int, default=10, help="Size of window to feed into network")
     parser.add_argument("--num_residues", type=int, default=28)
-    parser.add_argument("--latent_space_starting_frame", type=int, default=133000)
+    parser.add_argument("--latent_space_starting_frame", type=int, default=0)
+    parser.add_argument("--latent_space_ending_frame", type=int, default=10000)
+    parser.add_argument("--latent_space_step_frames", type=int, default=100)
     parser.add_argument("--latent_space_num_frames", type=int, default=10000)
+    parser.add_argument("--latent_space_fname", type=str, default="latent.h5")
     parser.add_argument("--node_features_path", type=Path, default=None)
 
     #parser.add_argument("--plot_latent", type=bool, default=True)
@@ -910,6 +912,8 @@ def parse_args():
     parser.add_argument("--MLP_n_layers", type=int, default=2, help="Number of layers in the BasicMLP")
     parser.add_argument("--LSTM_n_layers", type=int, default=10, help="Number of layers in the BasicLSTM")
     parser.add_argument("--residue_step", type=int, default=1, help="Use every residue_step residue from the trajectory in the model")
+    parser.add_argument("--traj_id_train", type=int, default=None)
+    parser.add_argument("--traj_id_valid", type=int, default=None)
 
     args = parser.parse_args()
 
@@ -1088,26 +1092,27 @@ def main():
     #     augment_with_noise_mu=args.augment_with_noise_mu
     # )
 
-    train_length = int(args.n_frames * args.split_pct)
-    valid_length = args.n_frames - train_length
+    train_length = int(args.n_frames * args.split_pct_train)
+    valid_length = int(args.n_frames * args.split_pct_valid) #args.n_frames - train_length
 
     train_dataset = ContactMapNewDataset(
         args.data_path, node_feature_dset_path=args.node_features_path, 
-        window_size=args.window_size, frames_range=[0, train_length], frame_step=args.frame_step, residue_step=args.residue_step,
+        window_size=args.window_size, frames_range=[0, train_length], frame_step=args.frame_step, residue_step=args.residue_step, split_frac=args.split_pct_train, traj_id=args.traj_id_train,
         augment_by_reversing_prob=args.augment_by_reversing_prob,
         augment_by_rotating180_prob=args.augment_by_rotating180_prob,
         augment_by_translating_prob=args.augment_by_translating_prob,
         augment_with_noise_mu=args.augment_with_noise_mu
     )
-    print(train_dataset)
+    print('TRAIN:\n', train_dataset)
     valid_dataset = ContactMapNewDataset(
         args.data_path, node_feature_dset_path=args.node_features_path, 
-        window_size=args.window_size, frames_range=[train_length, args.n_frames], frame_step=args.frame_step, residue_step=args.residue_step,
+        window_size=args.window_size, frames_range=[train_length, args.n_frames], frame_step=args.frame_step, residue_step=args.residue_step, split_frac=-args.split_pct_valid, traj_id=args.traj_id_valid,
         augment_by_reversing_prob=0,
         augment_by_rotating180_prob=0,
         augment_by_translating_prob=0,
         augment_with_noise_mu=0
     )
+    print('VALIDATION:\n', valid_dataset)
     #dataset = ContactMapDataset(args.data_path, window_size=args.window_size,
     #                            node_feature_dset_path=args.node_features_path)
     #print("Created dataset")
@@ -1123,7 +1128,6 @@ def main():
     #    prefetch_factor=args.prefetch_factor,
     #    persistent_workers=args.persistent_workers,
     #)
-    #print(valid_dataset)
     #print("Created dataset")
     train_loader = DataListLoader(train_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=args.num_data_workers, prefetch_factor=args.prefetch_factor, persistent_workers=args.persistent_workers)
     valid_loader = DataListLoader(valid_dataset, batch_size=args.batch_size, shuffle=True, drop_last=True, pin_memory=True, num_workers=args.num_data_workers, prefetch_factor=args.prefetch_factor, persistent_workers=args.persistent_workers)
@@ -1132,6 +1136,7 @@ def main():
 
     # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print(f'device={device}')
 
     # Setup model, optimizer, loss function and scheduler
     if args.model == 'KernelNN':
@@ -1240,11 +1245,14 @@ def main():
             starting_points.append(potential_starts[-1])
 
     # Start training
+    args.latent_space_ending_frame = min(args.latent_space_ending_frame, len(valid_dataset))
+    print(list(range(args.latent_space_starting_frame, args.latent_space_ending_frame, args.latent_space_step_frames)))
     best_loss = float("inf")
     for epoch in range(args.epochs):
         time = default_timer()
         avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
-        avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
+        if (not args.plot_latent) or (epoch % args.plot_per_epochs == 0): 
+            avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
         video = None
         if args.generate_movie and (epoch % args.plot_per_epochs == 0):
             make_propagation_movie(model, valid_dataset, device, args.num_movie_frames, starting_points=starting_points)
@@ -1252,16 +1260,27 @@ def main():
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
                 latent_spaces = []
-                for inference_step in range(args.latent_space_num_frames):
-
-                    out, latent = model.module.forward(train_dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
+                for frame_no in range(args.latent_space_starting_frame, args.latent_space_ending_frame, args.latent_space_step_frames): #args.latent_space_num_frames):
+                    #out, latent = model.module.forward(train_dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
+                    if frame_no >= len(valid_dataset):
+                        print(f'{frame_no} >= {len(valid_dataset)}')
+                        break
+                    out, latent = model.module.forward(valid_dataset[frame_no].cuda(), return_latent=True, single_example=True)
                     latent = latent.cpu().numpy().flatten()
                     latent_spaces.append(latent)
 
                 latent_spaces = np.array(latent_spaces)
-                color_dict = {'RMSD': dataset.rmsd_values[args.latent_space_starting_frame:args.latent_space_starting_frame+args.latent_space_num_frames]}
-                out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
-                html_plot = wandb.Html(out_html['RMSD'], inject=False)
+                print('latent_spaces', latent_spaces.shape)
+                rmsds = valid_dataset.rmsd_values[range(args.latent_space_starting_frame, args.latent_space_ending_frame, args.latent_space_step_frames)]
+                fname = f'{args.latent_space_fname[:-3]}_e{epoch}.h5'
+                print(f'Writing {fname}')
+                hf = h5py.File(fname, 'w')
+                hf.create_dataset('latent_spaces', data=latent_spaces)
+                hf.create_dataset('RMSD', data=rmsds)
+                hf.close()
+                #color_dict = {'RMSD': valid_dataset.rmsd_values[range(args.latent_space_starting_frame, args.latent_space_ending_frame, args.latent_space_step_frames)]} #args.latent_space_starting_frame:args.latent_space_starting_frame+args.latent_space_num_frames]}
+                #out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
+                html_plot = None #wandb.Html(out_html['RMSD'], inject=False)
         else:
             html_plot = None
         wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,

@@ -10,6 +10,7 @@ import pdb
 import random
 #PathLike = Union[str, Path]
 import glob
+import math
 
 def aminoacid_int_to_onehot(labels):
     # 20 amino acids total
@@ -260,7 +261,9 @@ class ContactMapNewDataset(Dataset):
         frames_range: Tuple[int, int] = (0, 250000),
         frame_step: int = 1,
         node_feature_dset_path: str = None,
-        residue_step: int = 1
+        residue_step: int = 1,
+        split_frac: float = 1.0,
+        traj_id = None
     ):
         """
         Parameters
@@ -316,7 +319,9 @@ class ContactMapNewDataset(Dataset):
         self.n_aug = 0
         # TODO: How were these edges chosen? Radial cutoff or Gaussian?
         # TODO: a graph attention mechanism will allow the relevancy of edges to be learnt
-        self.sub_traj_length = frames_range[1] - frames_range[0]
+        #self.sub_traj_length = frames_range[1] - frames_range[0]
+        self.boundary_frames = []
+        self.n_traj = 0
         if str(path)[-3:] == '.h5':
             # only process one file
             with h5py.File(path, "r", libver="latest", swmr=False) as f:
@@ -336,76 +341,119 @@ class ContactMapNewDataset(Dataset):
                             self._node_features_dset = node_file[node_feature_dset_name][...]
                     else:
                         self._node_features_dset = f[node_feature_dset_name][...]
-        else:
+        else:       
             self.edge_indices = []
             self.node_attrs = []
             # process each file
-            h5_files = glob.glob(str(path)+'/*.h5')
-            h5_files.sort()
-            for i in h5_files:
-                with h5py.File(i, "r", libver="latest", swmr=False) as f:
-                    # COO formated ragged arrays
-                    print(f'{i} has {len(f[edge_index_dset_name])} frames', type(f[edge_index_dset_name]), type(f[edge_attr_dset_name]))
-                    self.edge_indices.extend(list(f[edge_index_dset_name][frames_range[0]:frames_range[1]]))
-                    self.node_attrs.extend(list(f[edge_attr_dset_name][frames_range[0]:frames_range[1]]))
+            def ff(x):
+                #print('*', x, '*')
+                parts = x.split('.')
+                if len(parts) == 3: return [int(parts[-2]), 0]
+                else: return [int(parts[-3]), int(parts[-2])]
+            h5_files = sorted(glob.glob(str(path)+'/*.h5'), key=ff) #lambda x: [int(x.split('.')[-3]), int(x.split('.')[-2])])
+            print(f'Found {len(h5_files)} traj segments in {path}')
+            if traj_id is not None:
+                h5_files = [h5_file for h5_file in h5_files if f'eq.{traj_id}.' in h5_file]
+                print(f'Reading all frames from {len(h5_files)} files belonging to traj {traj_id}')
+                frames_range = [None, None]
+            elif split_frac > 0:
+                n_files = max(1, math.floor(split_frac * len(h5_files)))
+                h5_files = h5_files[:n_files]
+                print(f'Reading all frames from the first {n_files} h5 files')
+                frames_range = [None, None]
+            elif split_frac < 0:
+                n_files = min(-1, math.floor(split_frac * len(h5_files)))
+                h5_files = h5_files[n_files:]
+                print(f'Reading all frames from the last {n_files} h5 files')
+                frames_range = [None, None]
 
             with h5py.File(h5_files[0], "r", libver="latest", swmr=False) as f:
-                try:
-                    self.rmsd_values = np.array(f['rmsd'][frames_range[0]:frames_range[1]])
-                except ValueError as e:
-                    print("Not able to load rmsd values...")
-                    self.rmsd_values = []
+                #try:
+                #    self.rmsd_values = np.array(f['rmsd'][frames_range[0]:frames_range[1]])
+                #except ValueError as e:
+                #    print("Not able to load rmsd values...")
+                #    self.rmsd_values = []
                 if node_feature_dset_name is not None:
                     if node_feature_dset_path is not None:
                         with h5py.File(node_feature_dset_path, "r", libver="latest", swmr=False) as node_file:
                             self._node_features_dset = np.array(node_file[node_feature_dset_name][...])
                     else:
                         self._node_features_dset = f[node_feature_dset_name][...]
+                        #self._node_features_dset = np.array([0] * len(f[edge_attr_dset_name][0]))
+
+            #h5_files.sort()
+            traj_length = {}
+            n_total_frames = 0
+            self.rmsd_values = []
+            for i in h5_files:
+                with h5py.File(i, "r", libver="latest", swmr=False) as f:
+                    # COO formated ragged arrays
+                    n_frames = len(f[edge_attr_dset_name][frames_range[0]:frames_range[1]])
+                    print(f'{i} has {len(f[edge_index_dset_name])} frames, using {n_frames}', type(f[edge_index_dset_name]), type(f[edge_attr_dset_name]))
+                    self.edge_indices.extend(list(f[edge_index_dset_name][frames_range[0]:frames_range[1]]))
+                    self.node_attrs.extend(list(f[edge_attr_dset_name][frames_range[0]:frames_range[1]]))
+                    self.rmsd_values.extend(f['rmsd'][frames_range[0]:frames_range[1]])
+                    parts = i.split('.')
+                    if len(parts) == 3: traj_id = int(parts[-2])
+                    else: traj_id = int(parts[-3])
+                    if traj_id not in traj_length: 
+                        traj_length[traj_id] = n_frames
+                        if n_total_frames > 0:
+                            self.boundary_frames.append(n_total_frames)
+                    else: traj_length[traj_id] += n_frames
+                    n_total_frames += n_frames
+                    self.n_traj += 1
+            self.rmsd_values = np.array(self.rmsd_values)
+            print('rmsd values', len(self.rmsd_values))
 
 
-        if self.sub_traj_length < (self.window_size + self.horizon - 1) * self.frame_step:
-            raise ValueError(
-                f"Sub-trajectory ({self.sub_traj_length} frames) is shorter than (window_size ({self.window_size}) + horizon ({self.horizon}) - 1) * frame_step ({self.frame_step}): cannot construct any examples!"
-            )
+        for traj_id in traj_length:
+            if traj_length[traj_id] < (self.window_size + self.horizon - 1) * self.frame_step:
+                raise ValueError(
+                    f"Sub-trajectory {traj_id} with {traj_length[traj_id]} frames) is shorter than (window_size ({self.window_size}) + horizon ({self.horizon}) - 1) * frame_step"\
+                    f" ({self.frame_step}): cannot construct any examples!"
+                )
+        print(f'{self.n_traj} trajectories; boundary frames: {self.boundary_frames}')
 
         # Put positions in order (N, num_nodes, 3)
         # These are node attributes that are going to be used as edge attributes later on:
         self.node_attrs = np.transpose(self.node_attrs, [0, 2, 1])
         print(f'self.node_attrs: {self.node_attrs.shape}') #  (4800, 6091, 3)
         self.x_aminoacid = self._node_features_dset
-        print(f'self.x_aminoacid: {self.x_aminoacid.shape}') # (6091,)
+        print(f'self.x_aminoacid: {len(self.x_aminoacid)}') # (6091,)
         self.x_aminoacid = torch.from_numpy(self.x_aminoacid).to(torch.long) 
         print(f'self.edge_indices: {len(self.edge_indices)} x {self.edge_indices[0].shape}', self.edge_indices[0]) # 4800 x (125850,) 
         self.num_residues = len(self.x_aminoacid)
-
-        self.residue_step = residue_step
-        print(f'residue_step={residue_step}')
-        self.node_attrs = self.node_attrs[:, range(0, self.num_residues, self.residue_step), :]
-        print(f'self.node_attrs: {self.node_attrs.shape}') #   (160, 610, 3)
-        self.x_aminoacid = self.x_aminoacid[range(0, self.num_residues, self.residue_step)]
-        print(f'self.x_aminoacid: {self.x_aminoacid.shape}') # (6091,)
-        self.edge_indices = [
-            list(np.array([
-                [i // self.residue_step, j // self.residue_step]
-                for i, j in edge_index.reshape(-1, 2)
-                if (i % self.residue_step == 0) and (j % self.residue_step == 0)
-            ]).flatten())
-            for edge_index in self.edge_indices
-        ]
-        self.num_residues = len(self.x_aminoacid)
         self.num_frames = len(self.node_attrs)
-        print(f'self.edge_indices: {len(self.edge_indices)} x {len(self.edge_indices[0])}')#, self.edge_indices[0]) # 4800 x (125850,) 
-        hf = h5py.File(f'all_frames{self.num_frames}_residues{self.num_residues}.h5', 'w')
-        print(node_feature_dset_name, type(self.node_attrs))
-        hf.create_dataset(node_feature_dset_name, data=self.node_attrs)
-        print(edge_index_dset_name, type(self.edge_indices))
 
-        dt = h5py.vlen_dtype(np.dtype('int32'))
-        dset = hf.create_dataset(edge_index_dset_name, (len(self.edge_indices),), dtype=dt) #, data=self.edge_indices)
-        for i, edge_index in enumerate(self.edge_indices):
-            dset[i] = edge_index
-        hf.close()
-        sys.exit(0)
+        if residue_step > 1:
+            self.residue_step = residue_step
+            print(f'residue_step={residue_step}')
+            self.node_attrs = self.node_attrs[:, range(0, self.num_residues, self.residue_step), :]
+            print(f'self.node_attrs: {self.node_attrs.shape}') #   (160, 610, 3)
+            self.x_aminoacid = self.x_aminoacid[range(0, self.num_residues, self.residue_step)]
+            print(f'self.x_aminoacid: {self.x_aminoacid.shape}') # (6091,)
+            self.edge_indices = [
+                list(np.array([
+                    [i // self.residue_step, j // self.residue_step]
+                    for i, j in edge_index.reshape(-1, 2)
+                    if (i % self.residue_step == 0) and (j % self.residue_step == 0)
+                ]).flatten())
+                for edge_index in self.edge_indices
+            ]
+            self.num_residues = len(self.x_aminoacid)
+            print(f'self.edge_indices: {len(self.edge_indices)} x {len(self.edge_indices[0])}')#, self.edge_indices[0]) # 4800 x (125850,) 
+            hf = h5py.File(f'all_frames{self.num_frames}_residues{self.num_residues}.h5', 'w')
+            print(node_feature_dset_name, type(self.node_attrs))
+            hf.create_dataset(node_feature_dset_name, data=self.node_attrs)
+            print(edge_index_dset_name, type(self.edge_indices))
+
+            dt = h5py.vlen_dtype(np.dtype('int32'))
+            dset = hf.create_dataset(edge_index_dset_name, (len(self.edge_indices),), dtype=dt) #, data=self.edge_indices)
+            for i, edge_index in enumerate(self.edge_indices):
+                dset[i] = edge_index
+            hf.close()
+            sys.exit(0)
 
     @property
     def num_nodes(self) -> int:
@@ -426,10 +474,15 @@ class ContactMapNewDataset(Dataset):
     def __len__(self): #ContactMapNewDataset
         return len(self.edge_indices) - (self.window_size + self.horizon - 1) * self.frame_step
 
+    def get_traj_of_frame(self, frame):
+        for traj, bf in enumerate(self.boundary_frames):
+            if frame < bf: return traj
+        return self.n_traj - 1
+
     def __getitem__(self, idx): #ContactMapNewDataset
         # The set of frames should not span different trajectories, so move idx if it is too close to the frame where differnet trajectories have been stitched together.
-        traj_start = idx % self.sub_traj_length
-        traj_end = (idx + (self.window_size + self.horizon - 1) * self.frame_step) % self.sub_traj_length
+        traj_start = self.get_traj_of_frame(idx) # % self.sub_traj_length
+        traj_end = self.get_traj_of_frame(idx + (self.window_size + self.horizon - 1) * self.frame_step) #% self.sub_traj_length
         if traj_start != traj_end:
             # Picking a random frame in traj_start
             # Note: this will affect validation
