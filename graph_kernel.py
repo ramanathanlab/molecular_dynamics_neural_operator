@@ -562,6 +562,8 @@ def main():
             # last window
             starting_points.append(potential_starts[-1])
 
+    pdb.set_trace()
+
     # Start training
     best_loss = float("inf")
     # save rmsd paints
