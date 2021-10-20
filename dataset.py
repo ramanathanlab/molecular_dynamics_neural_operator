@@ -164,9 +164,9 @@ class ContactMapDataset(Dataset):
         self.edge_attrs = np.transpose(self.edge_attrs, [0, 2, 1])
         #print(self._node_features_dset)
         #print(self._node_features_dset.shape)
-        self.x_aminoacid = self._node_features_dset
+        # self.x_aminoacid = self._node_features_dset
         #self.x_aminoacid = self._compute_node_features(node_feature)
-        self.x_aminoacid = torch.from_numpy(self.x_aminoacid).to(torch.long)
+        # self.x_aminoacid = torch.from_numpy(self.x_aminoacid).to(torch.long)
 
     def _compute_node_features(self, node_feature: str) -> np.ndarray:
         if node_feature == "constant":
