@@ -21,14 +21,14 @@ def aminoacid_int_to_onehot(labels):
 class PairData(Data):
     def __init__(
         self,
-        x_aminoacid: OptTensor = None,
+        # x_aminoacid: OptTensor = None,
         x_position: OptTensor = None,
         y: OptTensor = None,
         edge_attr: OptTensor = None,
         edge_index: OptTensor = None,
     ) -> None:
         super().__init__()
-        self.x_aminoacid = x_aminoacid
+        # self.x_aminoacid = x_aminoacid
         self.x_position = x_position
         self.y = y
         self.edge_attr = edge_attr
@@ -36,7 +36,7 @@ class PairData(Data):
 
     @property
     def num_nodes(self) -> int:
-        return self.x_aminoacid.size(0)
+        return self.x_position.size(0)
 
     def __inc__(self, key, value, *args, **kwargs):
         if key == "edge_index":
@@ -45,7 +45,7 @@ class PairData(Data):
             return super().__inc__(key, value, *args, **kwargs)
 
     def pin_memory(self):
-        self.x_aminoacid = self.x_aminoacid.pin_memory()
+        # self.x_aminoacid = self.x_aminoacid.pin_memory()
         self.x_position = self.x_position.pin_memory()
         self.y = self.y.pin_memory()
         self.edge_attr = self.edge_attr.pin_memory()
@@ -220,7 +220,7 @@ class ContactMapDataset(Dataset):
 
         # Construct torch_geometric data object
         data = PairData(
-            x_aminoacid=self.x_aminoacid,
+            # x_aminoacid=self.x_aminoacid,
             x_position=x_position,
             y=y,
             edge_attr=edge_attr,

@@ -263,7 +263,7 @@ class KernelNN(torch.nn.Module):
         self.lstm = nn.LSTM(x_position_dim, x_position_dim)
         self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
 
-        self.emb = nn.Embedding(num_embeddings, embedding_dim)
+        # self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
         self.fc1 = torch.nn.Linear(in_width, width)
 
@@ -288,11 +288,11 @@ class KernelNN(torch.nn.Module):
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
-        emb = self.emb(data.x_aminoacid)
-        x = x.reshape(emb.shape[0], -1)
+        # emb = self.emb(data.x_aminoacid)
+        # x = x.reshape(emb.shape[0], -1)
         # print("data.x_aminoacid", data.x_aminoacid.shape)
         # print("data.x_position:", data.x_position.shape)
-        x = torch.cat((emb, x), dim=1)
+        # x = torch.cat((emb, x), dim=1)
         # print("x:", x.shape)
         x = F.relu(self.fc1(x))
         for k in range(self.depth):
@@ -383,7 +383,7 @@ def construct_pairdata(x_position, x_aminoacid, threshold: float = 8.0) -> PairD
 
     # Construct torch_geometric data object
     data = PairData(
-        x_aminoacid=x_aminoacid,
+        # x_aminoacid=x_aminoacid,
         x_position=x_position,
         edge_attr=edge_attr,
         edge_index=edge_index,
