@@ -265,7 +265,7 @@ class KernelNN(torch.nn.Module):
 
         # self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
-        # self.fc1 = torch.nn.Linear(in_width, width)
+        self.fc1 = torch.nn.Linear(in_width, width)
 
         kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
         self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
@@ -294,7 +294,7 @@ class KernelNN(torch.nn.Module):
         # print("data.x_position:", data.x_position.shape)
         # x = torch.cat((emb, x), dim=1)
         # print("x:", x.shape)
-        # x = F.relu(self.fc1(x))
+        x = F.relu(self.fc1(x))
         for k in range(self.depth):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
         for k in range(self.depth):
