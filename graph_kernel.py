@@ -265,7 +265,7 @@ class KernelNN(torch.nn.Module):
 
         # self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
-        self.fc1 = torch.nn.Linear(in_width, width)
+        # self.fc1 = torch.nn.Linear(in_width, width)
 
         kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
         self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
@@ -285,7 +285,7 @@ class KernelNN(torch.nn.Module):
         # x, hidden = self.lstm(x)
         # take the last time slice, we don't want all of them
         # x = x[-args.batch_size:]
-        x = self.lstm_fc(x)
+        x = F.relu(self.lstm_fc(x))
         # Use an embedding layer to map the onehot aminoacid vector to
         # a dense vector and then concatenate the result with the positions
         # emb = self.emb(data.x_aminoacid.view(args.batch_size, -1, self.num_embeddings))
@@ -295,7 +295,7 @@ class KernelNN(torch.nn.Module):
         # print("data.x_position:", data.x_position.shape)
         # x = torch.cat((emb, x), dim=1)
         # print("x:", x.shape)
-        x = F.relu(self.fc1(x))
+        # x = F.relu(self.fc1(x))
         for k in range(self.depth):
             x = F.relu(self.conv1(x, edge_index, edge_attr))
         for k in range(self.depth):
