@@ -236,6 +236,7 @@ class DenseNet(torch.nn.Module):
             self.layers.append(out_nonlinearity())
 
     def forward(self, x):
+        pdb.set_trace()
         for _, layer in enumerate(self.layers):
             x = layer(x)
         return x
