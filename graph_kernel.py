@@ -192,7 +192,7 @@ class NNConv_old(MessagePassing):
 
     def forward(self, x, edge_index, edge_attr):
         """"""
-        pdb.set_trace()
+        # pdb.set_trace()
         x = x.unsqueeze(-1) if x.dim() == 1 else x
         pseudo = edge_attr.unsqueeze(-1) if edge_attr.dim() == 1 else edge_attr
         return self.propagate(edge_index, x=x, pseudo=pseudo)
@@ -237,7 +237,7 @@ class DenseNet(torch.nn.Module):
             self.layers.append(out_nonlinearity())
 
     def forward(self, x):
-        pdb.set_trace()
+        # pdb.set_trace()
         for _, layer in enumerate(self.layers):
             x = layer(x)
         return x
@@ -276,7 +276,7 @@ class KernelNN(torch.nn.Module):
         self.fc2 = torch.nn.Linear(width, out_width)
 
     def forward(self, data: PairData, return_latent: bool = False, single_example: bool = False) -> [torch.Tensor, Optional[torch.tensor]]:
-        pdb.set_trace()
+        # pdb.set_trace()
         edge_index, edge_attr = data.edge_index, data.edge_attr
         x = data.x_position.reshape(-1, args.window_size, args.num_residues, 3)
         x = torch.swapaxes(x, 0, 1)
@@ -565,7 +565,7 @@ def main():
             # last window
             starting_points.append(potential_starts[-1])
 
-    pdb.set_trace()
+    # pdb.set_trace()
 
     # Start training
     best_loss = float("inf")
