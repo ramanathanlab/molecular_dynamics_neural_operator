@@ -192,6 +192,7 @@ class NNConv_old(MessagePassing):
 
     def forward(self, x, edge_index, edge_attr):
         """"""
+        pdb.set_trace()
         x = x.unsqueeze(-1) if x.dim() == 1 else x
         pseudo = edge_attr.unsqueeze(-1) if edge_attr.dim() == 1 else edge_attr
         return self.propagate(edge_index, x=x, pseudo=pseudo)
@@ -262,7 +263,7 @@ class KernelNN(torch.nn.Module):
         self.x_position_dim = x_position_dim
 
         self.lstm = nn.LSTM(x_position_dim, x_position_dim)
-        self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim+embedding_dim)
+        self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
 
         # self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
