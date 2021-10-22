@@ -263,11 +263,11 @@ class KernelNN(torch.nn.Module):
         self.x_position_dim = x_position_dim
 
         self.lstm = nn.LSTM(x_position_dim, x_position_dim)
-        self.lstm_fc = torch.nn.Linear(x_position_dim, x_position_dim)
+        self.lstm_fc = torch.nn.Linear(x_position_dim, width)
 
         # self.emb = nn.Embedding(num_embeddings, embedding_dim)
 
-        # self.fc1 = torch.nn.Linear(in_width, width)
+        # self.fc1 = torch.nn.Linear(x_position_dim, width)
 
         kernel = DenseNet([ker_in, ker_width, ker_width, width ** 2], torch.nn.ReLU)
         self.conv1 = NNConv_old(width, width, kernel, aggr="mean")
