@@ -562,7 +562,7 @@ def main():
             # last window
             starting_points.append(potential_starts[-1])
 
-    pdb.set_trace()
+    # pdb.set_trace()
 
     # Start training
     best_loss = float("inf")
@@ -584,7 +584,7 @@ def main():
                 for inference_step in range(args.latent_space_num_frames):
 
                     out, latent = model.module.forward(dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
-                    latent = latent.cpu().numpy().flatten()
+                    latent = latent.detach().cpu().numpy().flatten()
                     latent_spaces.append(latent)
 
                 latent_spaces = np.array(latent_spaces)
