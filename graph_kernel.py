@@ -66,8 +66,8 @@ def train_valid_split(
         valid_dataset = Subset(dataset, indices[train_length:])
     else:
         raise ValueError(f"Invalid method: {method}.")
-    train_loader = DataListLoader(train_dataset, **kwargs)
-    valid_loader = DataListLoader(valid_dataset, **kwargs)
+    train_loader = DataLoader(train_dataset, **kwargs)
+    valid_loader = DataLoader(valid_dataset, **kwargs)
     return train_loader, valid_loader, train_dataset, valid_dataset
 
 
