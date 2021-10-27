@@ -529,7 +529,7 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Setup model, optimizer, loss function and scheduler
-    model = DataParallel(KernelNN(
+    model = KernelNN(
         args.width,
         args.kernel_width,
         args.depth,
@@ -538,7 +538,7 @@ def main():
         args.out_width,
         args.num_embeddings,
         args.embedding_dim,
-    )).to(device)
+    ).to(device)
 
     print("Initialized model")
 
