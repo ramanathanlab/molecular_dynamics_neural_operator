@@ -129,6 +129,7 @@ class ContactMapDataset(Dataset):
         else:
             self.edge_indices = []
             self.edge_attrs = []
+            self.rmsd_values = []
             # process each file
             h5_files = glob.glob(str(path)+'/*.h5')
             h5_files.sort()
@@ -137,19 +138,15 @@ class ContactMapDataset(Dataset):
                     # COO formated ragged arrays
                     self.edge_indices.extend(list(f[edge_index_dset_name][:ntrain]))
                     self.edge_attrs.extend(list(f[edge_attr_dset_name][:ntrain]))
+                    self.rmsd_values.extend(list(f['rmsd'][:ntrain]))
 
-            with h5py.File(h5_files[0], "r", libver="latest", swmr=False) as f:
-                try:
-                    self.rmsd_values = np.array(f['rmsd'][:ntrain])
-                except ValueError as e:
-                    print("Not able to load rmsd values...")
-                    self.rmsd_values = []
-                if node_feature_dset_name is not None:
-                    if node_feature_dset_path is not None:
-                        with h5py.File(node_feature_dset_path, "r", libver="latest", swmr=False) as node_file:
-                            self._node_features_dset = np.array(node_file[node_feature_dset_name][...])
-                    else:
-                        self._node_features_dset = f[node_feature_dset_name][...]
+                    
+        if node_feature_dset_name is not None:
+            if node_feature_dset_path is not None:
+                with h5py.File(node_feature_dset_path, "r", libver="latest", swmr=False) as node_file:
+                    self._node_features_dset = np.array(node_file[node_feature_dset_name][...])
+            else:
+                self._node_features_dset = f[node_feature_dset_name][...]
 
 
 
