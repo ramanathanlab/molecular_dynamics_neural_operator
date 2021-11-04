@@ -504,6 +504,7 @@ def main():
                                 node_feature_dset_path=args.node_features_path)
 
     print("Created dataset")
+    pdb.set_trace()
 
     train_loader, valid_loader, train_dataset, valid_dataset = train_valid_split(
         dataset,
