@@ -590,7 +590,7 @@ def main():
                 latent_spaces = np.array(latent_spaces)
                 # save in directory
                 np.save(args.run_path/'latent_epoch{}.npy'.format(epoch), latent_spaces)
-                color_dict = {'RMSD': valid_dataset.rmsd_values[
+                color_dict = {'RMSD': dataset.rmsd_values[
                                       args.latent_space_starting_frame:args.latent_space_starting_frame + args.latent_space_num_frames]}
 
                 print(len(color_dict['RMSD']))
