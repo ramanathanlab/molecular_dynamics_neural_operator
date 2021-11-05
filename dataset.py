@@ -140,7 +140,7 @@ class ContactMapDataset(Dataset):
                     self.edge_attrs.extend(list(f[edge_attr_dset_name][:ntrain]))
                     self.rmsd_values.extend(list(f['rmsd'][:ntrain]))
 
-                    
+
         if node_feature_dset_name is not None:
             if node_feature_dset_path is not None:
                 with h5py.File(node_feature_dset_path, "r", libver="latest", swmr=False) as node_file:
