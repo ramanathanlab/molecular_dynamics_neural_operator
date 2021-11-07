@@ -24,6 +24,7 @@ import wandb
 import os
 import imageio
 import pdb
+import pickle
 
 from dataset import ContactMapDataset, PairData
 
