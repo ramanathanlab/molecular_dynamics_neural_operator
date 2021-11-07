@@ -338,8 +338,8 @@ def parse_args():
     parser.add_argument("--plot_per_epochs", type=int, default=1)
     parser.add_argument("--window_size", type=int, default=10, help="Size of window to feed into network")
     parser.add_argument("--num_residues", type=int, default=28)
-    parser.add_argument("--latent_space_starting_frame", type=int, default=133000)
-    parser.add_argument("--latent_space_num_frames", type=int, default=10000)
+    # parser.add_argument("--latent_space_starting_frame", type=int, default=133000)
+    # parser.add_argument("--latent_space_num_frames", type=int, default=10000)
     parser.add_argument("--node_features_path", type=Path, default=None)
 
     args = parser.parse_args()
@@ -420,7 +420,7 @@ def get_contact_map(pair_data):
     return dense_contact_map
 
 
-def make_propagation_movie(model, dataset, device, num_steps=5, starting_points=[0, 25, 50]):
+def make_propagation_movie(model, dataset, device, epoch, num_steps=5, starting_points=[0, 25, 50]):
     forecast = recursive_propagation(model, dataset, device, num_steps=num_steps, starting_points=starting_points)
     filenames = []
     for starting_point in starting_points:
@@ -433,13 +433,13 @@ def make_propagation_movie(model, dataset, device, num_steps=5, starting_points=
             fig.suptitle("Time Step {}".format(i + 1))
             ax[0].set_title("Forecast")
             ax[1].set_title("Real")
-            filename = '/tmp/gno_movie/frame{}.png'.format(i + 1)
+            filename = args.run_path / 'epoch{}_gno_movie_frame{}.png'.format(epoch, i + 1)
             filenames.append(filename)
             plt.savefig(filename, dpi=150)
     images = []
     for filename in filenames:
         images.append(imageio.imread(filename))
-    imageio.mimsave('/tmp/gno_movie/movie.mp4', images)
+    imageio.mimsave(args.run_path / 'epoch{}_gno_movie.mp4'.format(epoch), images)
 
 def train(model, train_loader, optimizer, loss_fn, device):
     model.train()
@@ -570,6 +570,14 @@ def main():
     # np.save(args.run_path / 'rmsd.npy', valid_dataset.rmsd_values[
     #                                   args.latent_space_starting_frame:args.latent_space_starting_frame + args.latent_space_num_frames])
 
+    # calculate frames to plot for latent space
+    if args.plot_latent:
+        latent_start_frame = len(train_dataset)
+        color_dict = {'RMSD': dataset.rmsd_values[latent_start_frame:]}
+        b = pickle.dumps(color_dict)
+        with open(args.run_path/'latent_color_dict.pkl', 'wb') as f:
+            f.write(b)
+
     for epoch in range(args.epochs):
         time = default_timer()
         avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
@@ -581,25 +589,26 @@ def main():
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
                 latent_spaces = []
-                for inference_step in range(args.latent_space_num_frames):
+                inference_step = latent_start_frame
+                while inference_step < len(dataset):
 
-                    out, latent = model.module.forward(dataset[inference_step+args.latent_space_starting_frame].cuda(), return_latent=True, single_example=True)
+                    out, latent = model.module.forward(dataset[inference_step].cuda(), return_latent=True, single_example=True)
                     latent = latent.detach().cpu().numpy().flatten()
                     latent_spaces.append(latent)
+                    inference_step += 1
 
                 latent_spaces = np.array(latent_spaces)
                 # save in directory
-                np.save(args.run_path/'latent_epoch{}.npy'.format(epoch), latent_spaces)
-                color_dict = {'RMSD': dataset.rmsd_values[
-                                      args.latent_space_starting_frame:args.latent_space_starting_frame + args.latent_space_num_frames]}
+                np.save(args.run_path/'latent_space_epoch{}.npy'.format(epoch), latent_spaces)
 
                 print(len(color_dict['RMSD']))
                 print(len(latent_spaces))
-                out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch, method="PCA")
+                out_html = log_latent_visualization(latent_spaces, color_dict, args.run_path, epoch=epoch, method="PCA")
                 html_plot = wandb.Html(out_html['RMSD'], inject=False)
-                out_html = log_latent_visualization(latent_spaces, color_dict, '/tmp/latent_html/', epoch=epoch,
+                out_html = log_latent_visualization(latent_spaces, color_dict, args.run_path, epoch=epoch,
                                                     method="TSNE")
                 html_plot2 = wandb.Html(out_html['RMSD'], inject=False)
+
         else:
             html_plot = None
             html_plot2 = None
