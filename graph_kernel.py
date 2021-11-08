@@ -574,8 +574,8 @@ def main():
     # calculate frames to plot for latent space
     if args.plot_latent:
         latent_start_frame = len(train_dataset)
-        # color_dict = {'RMSD': dataset.rmsd_values[latent_start_frame:latent_start_frame+10000]}
-        color_dict = {'RMSD': dataset.rmsd_values[latent_start_frame:latent_start_frame + 10]}
+        color_dict = {'RMSD': dataset.rmsd_values[latent_start_frame:latent_start_frame+10000]}
+        # color_dict = {'RMSD': dataset.rmsd_values[latent_start_frame:latent_start_frame + 10]}
         b = pickle.dumps(color_dict)
         with open(args.run_path/'latent_color_dict.pkl', 'wb') as f:
             f.write(b)
@@ -592,8 +592,8 @@ def main():
             with torch.no_grad():
                 latent_spaces = []
                 inference_step = latent_start_frame
-                # for _ in range(10000):
-                for _ in range(10):
+                for _ in range(10000):
+                # for _ in range(10):
 
                     out, latent = model.module.forward(dataset[inference_step].cuda(), return_latent=True, single_example=True)
                     latent = latent.detach().cpu().numpy().flatten()
