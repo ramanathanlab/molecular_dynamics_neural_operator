@@ -593,7 +593,7 @@ def main():
                 latent_spaces = []
                 inference_step = latent_start_frame
                 # for _ in range(10000):
-                for _ in range(10)
+                for _ in range(10):
 
                     out, latent = model.module.forward(dataset[inference_step].cuda(), return_latent=True, single_example=True)
                     latent = latent.detach().cpu().numpy().flatten()
