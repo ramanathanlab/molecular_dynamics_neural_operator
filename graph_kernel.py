@@ -586,7 +586,7 @@ def main():
         video = None
         if args.generate_movie and (epoch % args.plot_per_epochs == 0):
             make_propagation_movie(model, valid_dataset, device, num_steps=args.num_movie_frames, starting_points=starting_points, epoch=epoch)
-            video = wandb.Video(args.run_path / 'epoch{}_gno_movie.mp4'.format(epoch), fps=2, format="mp4")
+            video = wandb.Video(str(args.run_path / 'epoch{}_gno_movie.mp4'.format(epoch)), fps=2, format="mp4")
         if args.plot_latent and (epoch % args.plot_per_epochs == 0):
             with torch.no_grad():
                 latent_spaces = []
