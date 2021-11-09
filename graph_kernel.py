@@ -30,6 +30,8 @@ from dataset import ContactMapDataset, PairData
 
 from mdlearn.utils import log_latent_visualization
 
+import nvidia_dlprof_pytorch_nvtx as nvtx
+
 EPS = 1e-15
 
 PathLike = Union[str, Path]
@@ -449,24 +451,24 @@ def train(model, train_loader, optimizer, loss_fn, device):
     mse_fn = torch.nn.MSELoss()
     for batch in tqdm(train_loader):
         # batch = batch.to(device, non_blocking=args.non_blocking)
+        with torch.autograd.profiler.emit_nvtx():
+            optimizer.zero_grad()
+            out = model(batch)
 
-        optimizer.zero_grad()
-        out = model(batch)
+            # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
+            # mse.backward()
+            # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
+            # loss.backward()
 
-        # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
-        # mse.backward()
-        # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
-        # loss.backward()
+            concat_y = torch.cat([data.y for data in batch]).to(out.device)
+            l2 = loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
+            l2.backward()
 
-        concat_y = torch.cat([data.y for data in batch]).to(out.device)
-        l2 = loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
-        l2.backward()
+            mse_loss = mse_fn(out, concat_y)
 
-        mse_loss = mse_fn(out, concat_y)
-
-        optimizer.step()
-        avg_loss += l2.item()
-        avg_mse += mse_loss.item()
+            optimizer.step()
+            avg_loss += l2.item()
+            avg_mse += mse_loss.item()
 
     avg_loss /= len(train_loader)
     avg_mse /= len(train_loader)
@@ -494,6 +496,9 @@ def validate(model, valid_loader, loss_fn, device):
 
 
 def main():
+    # for dl profiling
+    nvtx.init(enable_function_stack=True)
+
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 

@@ -136,10 +136,13 @@ class ContactMapDataset(Dataset):
             for i in h5_files:
                 with h5py.File(i, "r", libver="latest", swmr=False) as f:
                     # COO formated ragged arrays
-                    self.edge_indices.extend(list(f[edge_index_dset_name][:ntrain]))
-                    self.edge_attrs.extend(list(f[edge_attr_dset_name][:ntrain]))
-                    self.rmsd_values.extend(list(f['rmsd'][:ntrain]))
+                    self.edge_indices.extend(list(f[edge_index_dset_name]))
+                    self.edge_attrs.extend(list(f[edge_attr_dset_name]))
+                    self.rmsd_values.extend(list(f['rmsd']))
 
+            self.edge_indices = self.edge_indices[:ntrain]
+            self.edge_attrs = self.edge_attrs[:ntrain]
+            self.rmsd_values = self.rmsd_values[:ntrain]
 
         if node_feature_dset_name is not None:
             if node_feature_dset_path is not None:
