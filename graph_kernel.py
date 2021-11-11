@@ -586,9 +586,9 @@ def main():
         with open(args.run_path/'latent_color_dict.pkl', 'wb') as f:
             f.write(b)
 
-    for epoch in range(args.epochs):
-        time = default_timer()
-        avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
+    # for epoch in range(args.epochs):
+    #     time = default_timer()
+    #     avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
         # avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
         # video = None
         # if args.generate_movie and (epoch % args.plot_per_epochs == 0):
