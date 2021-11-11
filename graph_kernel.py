@@ -469,6 +469,7 @@ def train(model, train_loader, optimizer, loss_fn, device):
             optimizer.step()
             avg_loss += l2.item()
             avg_mse += mse_loss.item()
+            break
 
     avg_loss /= len(train_loader)
     avg_mse /= len(train_loader)
@@ -588,60 +589,60 @@ def main():
     for epoch in range(args.epochs):
         time = default_timer()
         avg_train_loss, avg_train_mse = train(model, train_loader, optimizer, loss_fn, device)
-        avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
-        video = None
-        if args.generate_movie and (epoch % args.plot_per_epochs == 0):
-            make_propagation_movie(model, valid_dataset, device, num_steps=args.num_movie_frames, starting_points=starting_points, epoch=epoch)
-            video = wandb.Video(str(args.run_path / 'epoch{}_gno_movie.mp4'.format(epoch)), fps=2, format="mp4")
-        if args.plot_latent and (epoch % args.plot_per_epochs == 0):
-            with torch.no_grad():
-                latent_spaces = []
-                inference_step = latent_start_frame
-                # for _ in range(10000):
-                for _ in range(10):
-
-                    out, latent = model.module.forward(dataset[inference_step].cuda(), return_latent=True, single_example=True)
-                    latent = latent.detach().cpu().numpy().flatten()
-                    latent_spaces.append(latent)
-                    inference_step += 1
-
-                latent_spaces = np.array(latent_spaces)
-                # save in directory
-                np.save(args.run_path/'latent_space_epoch{}.npy'.format(epoch), latent_spaces)
-
-                print(len(color_dict['RMSD']))
-                print(len(latent_spaces))
-                out_html = log_latent_visualization(latent_spaces, color_dict, args.run_path, epoch=epoch, method="PCA")
-                html_plot = wandb.Html(out_html['RMSD'], inject=False)
-                out_html = log_latent_visualization(latent_spaces, color_dict, args.run_path, epoch=epoch,
-                                                    method="TSNE")
-                html_plot2 = wandb.Html(out_html['RMSD'], inject=False)
-
-        else:
-            html_plot = None
-            html_plot2 = None
-        wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
-                   'avg_train_mse': avg_train_mse, 'avg_valid_mse': avg_valid_mse,
-                   'valid_prediction_video': video, 'PCA_RMSD_latent_plot': html_plot,
-                   'TSNE_RMSD_latent_plot': html_plot2})
-        scheduler.step()
-        print(
-            f"Epoch: {epoch}"
-            f"\tTime: {default_timer() - time}"
-            f"\ttrain_loss: {avg_train_loss}"
-            f"\tvalid_loss: {avg_valid_loss}"
-        )
-
-        # Save the model with the best validation loss
-        if avg_valid_loss < best_loss:
-            best_loss = avg_valid_loss
-            checkpoint = {
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "scheduler_state_dict": scheduler.state_dict(),
-            }
-            torch.save(checkpoint, args.run_path / "best.pt")
+        # avg_valid_loss, avg_valid_mse = validate(model, valid_loader, loss_fn, device)
+        # video = None
+        # if args.generate_movie and (epoch % args.plot_per_epochs == 0):
+        #     make_propagation_movie(model, valid_dataset, device, num_steps=args.num_movie_frames, starting_points=starting_points, epoch=epoch)
+        #     video = wandb.Video(str(args.run_path / 'epoch{}_gno_movie.mp4'.format(epoch)), fps=2, format="mp4")
+        # if args.plot_latent and (epoch % args.plot_per_epochs == 0):
+        #     with torch.no_grad():
+        #         latent_spaces = []
+        #         inference_step = latent_start_frame
+        #         # for _ in range(10000):
+        #         for _ in range(10):
+        #
+        #             out, latent = model.module.forward(dataset[inference_step].cuda(), return_latent=True, single_example=True)
+        #             latent = latent.detach().cpu().numpy().flatten()
+        #             latent_spaces.append(latent)
+        #             inference_step += 1
+        #
+        #         latent_spaces = np.array(latent_spaces)
+        #         # save in directory
+        #         np.save(args.run_path/'latent_space_epoch{}.npy'.format(epoch), latent_spaces)
+        #
+        #         print(len(color_dict['RMSD']))
+        #         print(len(latent_spaces))
+        #         out_html = log_latent_visualization(latent_spaces, color_dict, args.run_path, epoch=epoch, method="PCA")
+        #         html_plot = wandb.Html(out_html['RMSD'], inject=False)
+        #         out_html = log_latent_visualization(latent_spaces, color_dict, args.run_path, epoch=epoch,
+        #                                             method="TSNE")
+        #         html_plot2 = wandb.Html(out_html['RMSD'], inject=False)
+        #
+        # else:
+        #     html_plot = None
+        #     html_plot2 = None
+        # wandb.log({'avg_train_loss': avg_train_loss, 'avg_valid_loss': avg_valid_loss,
+        #            'avg_train_mse': avg_train_mse, 'avg_valid_mse': avg_valid_mse,
+        #            'valid_prediction_video': video, 'PCA_RMSD_latent_plot': html_plot,
+        #            'TSNE_RMSD_latent_plot': html_plot2})
+        # scheduler.step()
+        # print(
+        #     f"Epoch: {epoch}"
+        #     f"\tTime: {default_timer() - time}"
+        #     f"\ttrain_loss: {avg_train_loss}"
+        #     f"\tvalid_loss: {avg_valid_loss}"
+        # )
+        #
+        # # Save the model with the best validation loss
+        # if avg_valid_loss < best_loss:
+        #     best_loss = avg_valid_loss
+        #     checkpoint = {
+        #         "epoch": epoch,
+        #         "model_state_dict": model.state_dict(),
+        #         "optimizer_state_dict": optimizer.state_dict(),
+        #         "scheduler_state_dict": scheduler.state_dict(),
+        #     }
+        #     torch.save(checkpoint, args.run_path / "best.pt")
 
 
 if __name__ == "__main__":
