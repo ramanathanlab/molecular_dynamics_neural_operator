@@ -449,26 +449,30 @@ def train(model, train_loader, optimizer, loss_fn, device):
     avg_loss = 0.0
     avg_mse = 0.0
     mse_fn = torch.nn.MSELoss()
+    i = 0
     for batch in tqdm(train_loader):
+        if i < 2:
         # batch = batch.to(device, non_blocking=args.non_blocking)
-        with torch.autograd.profiler.emit_nvtx():
-            optimizer.zero_grad()
-            out = model(batch)
+            with torch.autograd.profiler.emit_nvtx():
+                optimizer.zero_grad()
+                out = model(batch)
 
-            # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
-            # mse.backward()
-            # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
-            # loss.backward()
+                # mse = F.mse_loss(out.view(-1, 1), batch.y.view(-1, 1))
+                # mse.backward()
+                # loss = torch.norm(out.view(-1) - batch.y.view(-1), 1)
+                # loss.backward()
 
-            concat_y = torch.cat([data.y for data in batch]).to(out.device)
-            l2 = loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
-            l2.backward()
+                concat_y = torch.cat([data.y for data in batch]).to(out.device)
+                l2 = loss_fn(out.view(args.batch_size, -1), concat_y.view(args.batch_size, -1))
+                l2.backward()
 
-            mse_loss = mse_fn(out, concat_y)
+                mse_loss = mse_fn(out, concat_y)
 
-            optimizer.step()
-            avg_loss += l2.item()
-            avg_mse += mse_loss.item()
+                optimizer.step()
+                avg_loss += l2.item()
+                avg_mse += mse_loss.item()
+                i += 1
+        else:
             break
 
     avg_loss /= len(train_loader)
