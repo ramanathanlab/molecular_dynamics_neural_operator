@@ -451,7 +451,7 @@ def train(model, train_loader, optimizer, loss_fn, device):
     mse_fn = torch.nn.MSELoss()
     i = 0
     for batch in tqdm(train_loader):
-        if i < 2:
+        if i < 1:
         # batch = batch.to(device, non_blocking=args.non_blocking)
             with torch.autograd.profiler.emit_nvtx():
                 optimizer.zero_grad()
